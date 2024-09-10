@@ -1,0 +1,23 @@
+{
+  "diagnostics": {
+    "enable": true,
+    "neededFileStatus": {
+      "codestyle-check": "Any"
+    }
+  },
+  "runtime": {
+    "version": "Lua 5.2.4"
+  },
+  "workspace": {
+    "library": ["runtime/lua"],
+    "checkThirdParty": false,
+    "maxPreload": 2000,
+    "preloadFileSize": 1000
+  },
+  "misc.parameters": ["--loglevel=trace"],
+  "telemetry.enable": false,
+  "Lua.format.defaultConfig": {
+    "indent_style": "space",
+    "indent_size": "4"
+  }
+}
