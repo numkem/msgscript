@@ -1,4 +1,4 @@
-package main
+package script
 
 import (
 	"context"
@@ -51,13 +51,17 @@ func (se *ScriptExecutor) HandleMessage(subject string, payload []byte, replyFun
 			L.SetContext(se.ctx)
 			defer L.Close()
 
+			fields := log.Fields{
+				"subject": subject,
+			}
+
 			// Set up the Lua state with the subject and payload
 			L.PreloadModule("http", gluahttp.NewHttpModule(&http.Client{}).Loader)
 			luajson.Preload(L)
 
 			if err := L.DoString(script); err != nil {
 				msg := fmt.Sprintf("Error parsing Lua script: %v", err)
-				log.WithField("subject", subject).Errorf(msg)
+				log.WithFields(fields).Errorf(msg)
 				replyFunc("error: " + msg)
 				return
 			}
@@ -67,8 +71,8 @@ func (se *ScriptExecutor) HandleMessage(subject string, payload []byte, replyFun
 				NRet:    1,
 				Protect: true,
 			}, lua.LString(subject), lua.LString(string(payload))); err != nil {
-				msg := fmt.Sprintf("failed to call onMessage function: %v", err)
-				log.WithField("subject", subject).Error(msg)
+				msg := fmt.Sprintf("failed to call OnMessage function: %v", err)
+				log.WithFields(fields).Error(msg)
 				replyFunc("error: " + msg)
 				return
 			}
@@ -78,7 +82,7 @@ func (se *ScriptExecutor) HandleMessage(subject string, payload []byte, replyFun
 			if str, ok := result.(lua.LString); ok {
 				replyFunc(string(str))
 			} else {
-				log.Warnf("Script for subject '%s' did not return a string", subject)
+				log.WithFields(fields).Warn("Script did not return a string")
 			}
 		}(script)
 	}
@@ -87,5 +91,5 @@ func (se *ScriptExecutor) HandleMessage(subject string, payload []byte, replyFun
 // Stop gracefully shuts down the ScriptExecutor and stops watching for changes
 func (se *ScriptExecutor) Stop() {
 	se.cancelFunc()
-	log.Info("ScriptExecutor stopped")
+	log.Debug("ScriptExecutor stopped")
 }

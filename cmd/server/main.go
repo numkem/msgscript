@@ -10,6 +10,7 @@ import (
 	"github.com/nats-io/nats.go"
 	log "github.com/sirupsen/logrus"
 
+	"github.com/numkem/msgscript/script"
 	msgstore "github.com/numkem/msgscript/store"
 )
 
@@ -61,7 +62,7 @@ func main() {
 	}
 
 	// Initialize ScriptExecutor
-	scriptExecutor := NewScriptExecutor(scriptStore)
+	scriptExecutor := script.NewScriptExecutor(scriptStore)
 
 	// Connect to NATS
 	if *natsURL == "" {
