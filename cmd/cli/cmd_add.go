@@ -2,28 +2,14 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"os"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
+	"github.com/numkem/msgscript/script"
 	msgstore "github.com/numkem/msgscript/store"
 )
-
-func loadLuaScript(filename string) ([]byte, error) {
-	f, err := os.Open(filename)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open lua script %s: %v", filename, err)
-	}
-
-	content, err := io.ReadAll(f)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read content of lua script %s: %v", filename, err)
-	}
-
-	return content, nil
-}
 
 func validateArgIsPath(cmd *cobra.Command, args []string) error {
 	if len(args) != 1 {
@@ -48,10 +34,7 @@ func init() {
 	rootCmd.AddCommand(addCmd)
 
 	addCmd.PersistentFlags().StringP("subject", "s", "", "The NATS subject to respond to")
-	addCmd.MarkFlagRequired("subject")
-
 	addCmd.PersistentFlags().StringP("name", "n", "", "The name of the script in the backend")
-	addCmd.MarkFlagRequired("name")
 }
 
 func addCmdRun(cmd *cobra.Command, args []string) {
@@ -81,18 +64,35 @@ func addCmdRun(cmd *cobra.Command, args []string) {
 		log.Fatalf("Unknown backend: %s", backend)
 	}
 
-	luaFilePath := args[0]
+	subject := cmd.Flag("subject").Value.String()
+	name := cmd.Flag("name").Value.String()
 
-	// Load the Lua script from the provided file path
-	script, err := loadLuaScript(luaFilePath)
+	// Try to read the file to see if we can find headers
+	r := new(script.ScriptReader)
+	err = r.ReadFile(args[0])
 	if err != nil {
-		log.Fatalf("Error loading Lua script: %v", err)
+		log.Errorf("failed to read the script file %s: %v", args[0], err)
+		return
+	}
+	if subject == "" {
+		if r.Script.Subject == "" {
+			log.Errorf("subject is required")
+			return
+		}
+
+		subject = r.Script.Subject
+	}
+	if name == "" {
+		if r.Script.Name == "" {
+			log.Errorf("name is required")
+			return
+		}
+
+		name = r.Script.Name
 	}
 
 	// Add the script to etcd under the given subject
-	subject := cmd.Flag("subject").Value.String()
-	name := cmd.Flag("name").Value.String()
-	err = scriptStore.AddScript(subject, name, string(script))
+	err = scriptStore.AddScript(subject, name, string(r.Script.Content))
 	if err != nil {
 		log.Fatalf("Failed to add script to etcd: %v", err)
 	}
