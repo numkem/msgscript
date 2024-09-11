@@ -9,7 +9,7 @@
     { self, nixpkgs }:
     let
       version = "0.1.0";
-      vendorHash = "sha256-sgsWPMjWvOGsy/EfBjMFhCZJYjfMBUurKxK88wDspUU=";
+      vendorHash = "sha256-KYlypGnuI4+s7XaYE3+Av7xDPgyYHH1sVpAymwPxRIo=";
 
       buildCli =
         system:
