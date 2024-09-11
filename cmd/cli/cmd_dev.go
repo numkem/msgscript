@@ -58,9 +58,6 @@ func devCmdRun(cmd *cobra.Command, args []string) {
 
 		name = r.Script.Name
 	}
-	fmt.Printf("subject: %+v\n", subject)
-	fmt.Printf("name: %+v\n", name)
-	fmt.Printf("%+v\n", string(r.Script.Content))
 
 	// Add the given script to the store
 	store.AddScript(subject, name, string(r.Script.Content))
