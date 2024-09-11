@@ -2,9 +2,7 @@ package main
 
 import (
 	"os"
-	"strings"
 
-	"github.com/sirupsen/logrus"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
@@ -13,11 +11,6 @@ var rootCmd = &cobra.Command{
 	Use:   "msgscript",
 	Short: "msgscript CLI",
 	Long:  `msgscript is a command line interface for managing scripts for the msgscript-server`,
-	Run: func(cmd *cobra.Command, args []string) {
-		if cmd.Flag("log-level").Value.String() == strings.ToLower(logrus.DebugLevel.String()) {
-			log.SetLevel(log.DebugLevel)
-		}
-	},
 }
 
 func init() {
