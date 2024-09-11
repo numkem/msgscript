@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -27,6 +28,10 @@ func etcdEndpoints(endpoints string) []string {
 // NewEtcdScriptStore creates a new instance of EtcdScriptStore
 func NewEtcdScriptStore(url string) (*EtcdScriptStore, error) {
 	log.Debugf("Attempting to connect to etcd @ %s", url)
+
+	if e := os.Getenv("ETCD_ENDPOINTS"); e != "" {
+		url = e
+	}
 
 	client, err := clientv3.New(clientv3.Config{
 		Endpoints:   etcdEndpoints(url),

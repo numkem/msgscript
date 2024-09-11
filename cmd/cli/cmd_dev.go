@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"sync"
 
@@ -22,12 +23,7 @@ func init() {
 	rootCmd.AddCommand(devCmd)
 
 	devCmd.PersistentFlags().StringP("subject", "s", "", "The NATS subject to respond to")
-	devCmd.MarkFlagRequired("subject")
-
 	devCmd.PersistentFlags().StringP("name", "n", "", "The name of the script in the backend")
-	devCmd.MarkFlagRequired("name")
-
-	devCmd.PersistentFlags().StringP("actualSubject", "x", "", "The actual subject nats would use in case the subject is a wildcard")
 	devCmd.PersistentFlags().StringP("payload", "p", "", "Path to or actual payload to send to the function")
 }
 
@@ -36,20 +32,38 @@ func devCmdRun(cmd *cobra.Command, args []string) {
 	scriptExecutor := script.NewScriptExecutor(store)
 
 	subject := cmd.Flag("subject").Value.String()
-	actualSubject := cmd.Flag("actualSubject").Value.String()
 	name := cmd.Flag("name").Value.String()
-	if actualSubject == "" {
-		actualSubject = subject
-	}
 
-	// Add the given script to the store
-	scriptContent, err := os.ReadFile(args[0])
+	// Try to read the file to see if we can find headers
+	r := new(script.ScriptReader)
+	err := r.ReadFile(args[0])
 	if err != nil {
-		log.Errorf("failed to read script file %s: %v", args[0], err)
+		log.Errorf("failed to read the script file %s: %v", args[0], err)
 		return
 	}
-	log.Debug("read lua file")
-	store.AddScript(actualSubject, name, string(scriptContent))
+
+	if subject == "" {
+		if r.Script.Subject == "" {
+			log.Errorf("subject is required")
+			return
+		}
+
+		subject = r.Script.Subject
+	}
+	if name == "" {
+		if r.Script.Name == "" {
+			log.Errorf("name is required")
+			return
+		}
+
+		name = r.Script.Name
+	}
+	fmt.Printf("subject: %+v\n", subject)
+	fmt.Printf("name: %+v\n", name)
+	fmt.Printf("%+v\n", string(r.Script.Content))
+
+	// Add the given script to the store
+	store.AddScript(subject, name, string(r.Script.Content))
 
 	payloadFlag := cmd.Flag("payload").Value.String()
 	var payload []byte
@@ -68,7 +82,7 @@ func devCmdRun(cmd *cobra.Command, args []string) {
 	log.Debug("loaded payload")
 
 	fields := log.Fields{
-		"subject":      actualSubject,
+		"subject":      subject,
 		"payload":      string(payload),
 		"lua_filename": args[0],
 	}
@@ -76,7 +90,7 @@ func devCmdRun(cmd *cobra.Command, args []string) {
 	var wg sync.WaitGroup
 	wg.Add(1)
 	log.WithFields(fields).Debug("running the function")
-	scriptExecutor.HandleMessage(actualSubject, payload, func(reply string) {
+	scriptExecutor.HandleMessage(subject, payload, func(reply string) {
 		log.Debug("function executed")
 		cmd.Println(reply)
 		wg.Done()

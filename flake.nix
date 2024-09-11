@@ -8,8 +8,8 @@
   outputs =
     { self, nixpkgs }:
     let
-      version = "0.1.0";
-      vendorHash = "sha256-KYlypGnuI4+s7XaYE3+Av7xDPgyYHH1sVpAymwPxRIo=";
+      version = "0.1.1";
+      vendorHash = "sha256-/3tsH8BWQqYzRODe39VRbtulKkAxy668YaNkS2/5TCE=";
 
       buildCli =
         system:
