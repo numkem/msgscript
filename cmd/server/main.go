@@ -9,6 +9,7 @@ import (
 
 	"github.com/nats-io/nats.go"
 	log "github.com/sirupsen/logrus"
+	"golang.org/x/net/context"
 
 	"github.com/numkem/msgscript/script"
 	msgstore "github.com/numkem/msgscript/store"
@@ -74,7 +75,10 @@ func main() {
 	}
 	defer nc.Close()
 
-	log.Info("Starging message watch...")
+	log.Info("Starting message watch...")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	// Set up a message handler
 	_, err = nc.Subscribe(">", func(msg *nats.Msg) {
@@ -86,7 +90,7 @@ func main() {
 		}
 
 		// Handle the message by invoking the corresponding Lua script
-		scriptExecutor.HandleMessage(msg.Subject, msg.Data, func(reply string) {
+		scriptExecutor.HandleMessage(ctx, msg.Subject, msg.Data, func(reply string) {
 			// Send a reply if the message has a reply subject
 			if msg.Reply != "" {
 				nc.Publish(msg.Reply, []byte(reply))

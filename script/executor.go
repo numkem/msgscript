@@ -31,9 +31,9 @@ func NewScriptExecutor(store msgstore.ScriptStore) *ScriptExecutor {
 }
 
 // HandleMessage receives a message, matches it to a Lua script, and executes the script in a new goroutine
-func (se *ScriptExecutor) HandleMessage(subject string, payload []byte, replyFunc func(string)) {
+func (se *ScriptExecutor) HandleMessage(ctx context.Context, subject string, payload []byte, replyFunc func(string)) {
 	// Look up the Lua script for the given subject
-	scripts, err := se.store.GetScripts(subject)
+	scripts, err := se.store.GetScripts(ctx, subject)
 	if err != nil {
 		log.Errorf("failed to get scripts for subject %s: %v", subject, err)
 	}
@@ -44,23 +44,38 @@ func (se *ScriptExecutor) HandleMessage(subject string, payload []byte, replyFun
 
 	}
 
-	for _, script := range scripts {
+	for path, script := range scripts {
 		// Run the Lua script in a separate goroutine to handle the message
 		go func(script string) {
+			// to help with locks, sleep for a random amount
+			fields := log.Fields{
+				"path": path,
+			}
+
+			locked, err := se.store.TakeLock(ctx, path)
+			if err != nil {
+				log.WithFields(fields).Errorf("failed to get lock: %v", err)
+				return
+			}
+
+			if !locked {
+				log.WithFields(fields).Debug("We don't have a lock, giving up")
+				return
+			}
+			defer se.store.ReleaseLock(context.Background(), path)
+
+			log.WithFields(fields).Debug("executing script")
+
 			L := lua.NewState()
 			L.SetContext(se.ctx)
 			defer L.Close()
-
-			fields := log.Fields{
-				"subject": subject,
-			}
 
 			// Set up the Lua state with the subject and payload
 			L.PreloadModule("http", gluahttp.NewHttpModule(&http.Client{}).Loader)
 			luajson.Preload(L)
 
 			if err := L.DoString(script); err != nil {
-				msg := fmt.Sprintf("Error parsing Lua script: %v", err)
+				msg := fmt.Sprintf("error parsing Lua script: %v", err)
 				log.WithFields(fields).Errorf(msg)
 				replyFunc("error: " + msg)
 				return

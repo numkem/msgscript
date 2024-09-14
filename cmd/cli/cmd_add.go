@@ -92,7 +92,7 @@ func addCmdRun(cmd *cobra.Command, args []string) {
 	}
 
 	// Add the script to etcd under the given subject
-	err = scriptStore.AddScript(subject, name, string(r.Script.Content))
+	err = scriptStore.AddScript(cmd.Context(), subject, name, string(r.Script.Content))
 	if err != nil {
 		log.Fatalf("Failed to add script to etcd: %v", err)
 	}

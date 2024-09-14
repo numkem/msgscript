@@ -59,7 +59,7 @@ func devCmdRun(cmd *cobra.Command, args []string) {
 	}
 
 	// Add the given script to the store
-	store.AddScript(subject, name, string(r.Script.Content))
+	store.AddScript(cmd.Context(), subject, name, string(r.Script.Content))
 
 	payloadFlag := cmd.Flag("payload").Value.String()
 	var payload []byte
@@ -86,7 +86,7 @@ func devCmdRun(cmd *cobra.Command, args []string) {
 	var wg sync.WaitGroup
 	wg.Add(1)
 	log.WithFields(fields).Debug("running the function")
-	scriptExecutor.HandleMessage(subject, payload, func(reply string) {
+	scriptExecutor.HandleMessage(cmd.Context(), subject, payload, func(reply string) {
 		log.Debug("function executed")
 		cmd.Println(reply)
 		wg.Done()

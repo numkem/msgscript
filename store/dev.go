@@ -1,5 +1,7 @@
 package store
 
+import "context"
+
 type DevStore struct {
 	// Key pattern:
 	// First: subject
@@ -28,28 +30,30 @@ func (s *DevStore) onChange(subject, name, script string, del bool) {
 	return
 }
 
-func (s *DevStore) WatchScripts(subject string, onChange func(subject, name, script string, delete bool)) {
+func (s *DevStore) WatchScripts(ctx context.Context, subject string, onChange func(subject, name, script string, delete bool)) {
 	onChange(subject, "", "", false)
 }
 
-func (s *DevStore) AddScript(subject, name, script string) error {
+func (s *DevStore) AddScript(ctx context.Context, subject, name, script string) error {
 	s.onChange(subject, name, script, false)
 
 	return nil
 }
 
-func (s *DevStore) DeleteScript(subject, name string) error {
+func (s *DevStore) DeleteScript(ctx context.Context, subject, name string) error {
 	s.onChange(subject, name, "", true)
 
 	return nil
 }
 
-func (s *DevStore) GetScripts(subject string) ([]string, error) {
-	var scriptsForSubject []string
+func (s *DevStore) GetScripts(ctx context.Context, subject string) (map[string]string, error) {
+	return s.scripts[subject], nil
+}
 
-	for _, s := range s.scripts[subject] {
-		scriptsForSubject = append(scriptsForSubject, s)
-	}
+func (s *DevStore) TakeLock(ctx context.Context, path string) (bool, error) {
+	return true, nil
+}
 
-	return scriptsForSubject, nil
+func (s *DevStore) ReleaseLock(ctx context.Context, path string) error {
+	return nil
 }
