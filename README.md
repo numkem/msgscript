@@ -1,5 +1,23 @@
 # msgscript
 
+![Logo](logo.webp)
+
+<!-- markdown-toc start - Don't edit this section. Run M-x markdown-toc-refresh-toc -->
+**Table of Contents**
+
+- [msgscript](#msgscript)
+    - [Features](#features)
+    - [Installation](#installation)
+    - [Dependencies](#dependencies)
+    - [Usage](#usage)
+        - [Adding Scripts](#adding-scripts)
+        - [Writing Lua Scripts](#writing-lua-scripts)
+    - [Contributing](#contributing)
+    - [Support](#support)
+
+<!-- markdown-toc end -->
+
+
 msgscript is primarily a Go server that runs Lua functions internally based on NATS subjects.
 
 ## Features
