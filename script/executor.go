@@ -7,9 +7,11 @@ import (
 
 	"github.com/cjoudrey/gluahttp"
 	luajson "github.com/layeh/gopher-json"
+	"github.com/nats-io/nats.go"
 	log "github.com/sirupsen/logrus"
 	lua "github.com/yuin/gopher-lua"
 
+	luamodules "github.com/numkem/msgscript/lua"
 	msgstore "github.com/numkem/msgscript/store"
 )
 
@@ -18,15 +20,17 @@ type ScriptExecutor struct {
 	store      msgstore.ScriptStore // Interface for the script storage backend
 	ctx        context.Context      // Context for cancellation
 	cancelFunc context.CancelFunc   // Context cancellation
+	nc         *nats.Conn
 }
 
 // NewScriptExecutor creates a new ScriptExecutor using the provided ScriptStore
-func NewScriptExecutor(store msgstore.ScriptStore) *ScriptExecutor {
+func NewScriptExecutor(store msgstore.ScriptStore, nc *nats.Conn) *ScriptExecutor {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	return &ScriptExecutor{
 		store:      store,
 		ctx:        ctx,
 		cancelFunc: cancelFunc,
+		nc:         nc,
 	}
 }
 
@@ -73,6 +77,7 @@ func (se *ScriptExecutor) HandleMessage(ctx context.Context, subject string, pay
 			// Set up the Lua state with the subject and payload
 			L.PreloadModule("http", gluahttp.NewHttpModule(&http.Client{}).Loader)
 			luajson.Preload(L)
+			luamodules.PreloadNats(L, se.nc)
 
 			if err := L.DoString(script); err != nil {
 				msg := fmt.Sprintf("error parsing Lua script: %v", err)

@@ -4,6 +4,7 @@ import (
 	"os"
 	"sync"
 
+	"github.com/nats-io/nats.go"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
@@ -26,16 +27,35 @@ func init() {
 	devCmd.PersistentFlags().StringP("payload", "p", "", "Path to or actual payload to send to the function")
 }
 
+func natsUrlByEnv() string {
+	if url := os.Getenv("NATS_URL"); url != "" {
+		return url
+	} else {
+		return nats.DefaultURL
+	}
+}
+
 func devCmdRun(cmd *cobra.Command, args []string) {
 	store := msgstore.NewDevStore()
-	scriptExecutor := script.NewScriptExecutor(store)
+
+	// Connect to NATS
+	natsURL := cmd.Flag("natsurl").Value.String()
+	if natsURL == "" {
+		natsURL = natsUrlByEnv()
+	}
+	nc, err := nats.Connect(natsURL)
+	if err != nil {
+		log.Fatalf("Failed to connect to NATS: %v", err)
+	}
+	defer nc.Close()
+	scriptExecutor := script.NewScriptExecutor(store, nc)
 
 	subject := cmd.Flag("subject").Value.String()
 	name := cmd.Flag("name").Value.String()
 
 	// Try to read the file to see if we can find headers
 	r := new(script.ScriptReader)
-	err := r.ReadFile(args[0])
+	err = r.ReadFile(args[0])
 	if err != nil {
 		log.Errorf("failed to read the script file %s: %v", args[0], err)
 		return

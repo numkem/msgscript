@@ -62,9 +62,6 @@ func main() {
 		log.Fatalf("Unknown backend: %s", *backendFlag)
 	}
 
-	// Initialize ScriptExecutor
-	scriptExecutor := script.NewScriptExecutor(scriptStore)
-
 	// Connect to NATS
 	if *natsURL == "" {
 		*natsURL = natsUrlByEnv()
@@ -74,6 +71,9 @@ func main() {
 		log.Fatalf("Failed to connect to NATS: %v", err)
 	}
 	defer nc.Close()
+
+	// Initialize ScriptExecutor
+	scriptExecutor := script.NewScriptExecutor(scriptStore, nc)
 
 	log.Info("Starting message watch...")
 
