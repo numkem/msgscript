@@ -1,5 +1,3 @@
-# msgscript
-
 <p align="center">
   <img src="logo.webp" width="50%" height="50%">
 </p>
@@ -7,15 +5,14 @@
 <!-- markdown-toc start - Don't edit this section. Run M-x markdown-toc-refresh-toc -->
 **Table of Contents**
 
-- [msgscript](#msgscript)
-    - [Features](#features)
-    - [Installation](#installation)
-    - [Dependencies](#dependencies)
-    - [Usage](#usage)
-        - [Adding Scripts](#adding-scripts)
-        - [Writing Lua Scripts](#writing-lua-scripts)
-    - [Contributing](#contributing)
-    - [Support](#support)
+- [Features](#features)
+- [Installation](#installation)
+- [Dependencies](#dependencies)
+- [Usage](#usage)
+    - [Adding Scripts](#adding-scripts)
+    - [Writing Lua Scripts](#writing-lua-scripts)
+- [Contributing](#contributing)
+- [Support](#support)
 
 <!-- markdown-toc end -->
 
