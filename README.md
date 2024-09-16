@@ -1,6 +1,6 @@
 # msgscript
 
-<img src="https://raw.github.com/numkem/msgscript/logo.webp" width="75%" height="75%">
+<img src="logo.webp" width="50%" height="50%">
 
 <!-- markdown-toc start - Don't edit this section. Run M-x markdown-toc-refresh-toc -->
 **Table of Contents**
