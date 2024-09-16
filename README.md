@@ -1,6 +1,8 @@
 # msgscript
 
-<img src="logo.webp" width="50%" height="50%">
+<p align="center">
+  <img src="logo.webp" width="50%" height="50%">
+</p>
 
 <!-- markdown-toc start - Don't edit this section. Run M-x markdown-toc-refresh-toc -->
 **Table of Contents**
