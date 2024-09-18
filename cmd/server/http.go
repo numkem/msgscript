@@ -48,17 +48,15 @@ func (p *httpNatsProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Where yo would be the name of the script
 	ss := strings.Split(r.URL.Path, "/")
 	// Validate URL structure
-	if len(ss) != 3 {
+	if len(ss) != 2 {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("URL should be in the pattern of /<subject>/<function_name>"))
+		w.Write([]byte("URL should be in the pattern of /<subject>"))
 		return
 	}
 	subject := ss[1]
-	name := ss[2]
 
 	fields := log.Fields{
 		"subject": subject,
-		"name":    name,
 		"client":  r.RemoteAddr,
 	}
 	log.WithFields(fields).Info("Received HTTP request")
