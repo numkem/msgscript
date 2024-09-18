@@ -137,7 +137,7 @@ func (e *EtcdScriptStore) acquireLock(ctx context.Context, lockKey string, ttl i
 	fields := log.Fields{
 		"lockKey": lockKey,
 	}
-	log.WithFields(fields).Debugf("Acquiring lock")
+	log.WithFields(fields).Debugf("etcdStore: Acquiring lock")
 
 	l := concurrency.NewMutex(sess, lockKey)
 	err = l.TryLock(ctx)
@@ -149,27 +149,32 @@ func (e *EtcdScriptStore) acquireLock(ctx context.Context, lockKey string, ttl i
 		return nil, err
 	}
 
-	log.WithFields(fields).Debug("Acquired lock")
+	log.WithFields(fields).Debug("etcdStore: Acquired lock")
 
 	return l, nil
 }
 
 func (e *EtcdScriptStore) ReleaseLock(ctx context.Context, path string) error {
-	v, ok := e.mutexes.LoadAndDelete(path)
+	fields := log.Fields{
+		"path": path,
+	}
+	v, ok := e.mutexes.Load(path)
 	if !ok {
 		// We don't have a lock for that path
+		log.WithFields(fields).Debug("etcdStore: failed to find a locking mutex for timer")
 		return nil
 	}
 
 	l := v.(*lock)
 	err := l.Mutex.Unlock(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to release lock: %v", err)
+		return fmt.Errorf("etcdStore: failed to release lock: %v", err)
 	}
-	log.WithField("lockKey", path).Debug("Released the lock")
+	log.WithFields(fields).Debug("etcdStore: Released the lock")
 
 	// Stop the timer
 	l.Timer.Stop()
+	e.mutexes.Delete(path)
 
 	return nil
 }
@@ -192,13 +197,29 @@ func (e *EtcdScriptStore) TakeLock(ctx context.Context, path string) (bool, erro
 
 	// Remove the mutex from the map after 1 second more than the session's TTL in case it's never unlocked
 	timer := time.AfterFunc((ETCD_SESSION_TTL+1)*time.Second, func() {
+		log.WithField("path", path).Debug("Releasing lock on timeout")
 		e.ReleaseLock(context.Background(), lockKey)
 	})
 
-	e.mutexes.Store(lockKey, &lock{
+	e.mutexes.Store(path, &lock{
 		Mutex: mu,
 		Timer: timer,
 	})
 
 	return true, nil
+}
+
+func (e *EtcdScriptStore) ListSubjects(ctx context.Context) ([]string, error) {
+	resp, err := e.client.KV.Get(ctx, ETCD_SCRIPT_KEY_PREFIX, clientv3.WithPrefix())
+	if err != nil {
+		return nil, fmt.Errorf("failed to list keys: %v", err)
+	}
+
+	var subjects []string
+	for _, kv := range resp.Kvs {
+		ss := strings.Split(strings.Replace(string(kv.Key), ETCD_SCRIPT_KEY_PREFIX, "", 1), "/")
+		subjects = append(subjects, ss[1])
+	}
+
+	return subjects, nil
 }

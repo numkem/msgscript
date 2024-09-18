@@ -1,6 +1,9 @@
 package store
 
-import "context"
+import (
+	"context"
+	"fmt"
+)
 
 // Available backend options
 const (
@@ -16,4 +19,32 @@ type ScriptStore interface {
 	ReleaseLock(ctx context.Context, path string) error
 	TakeLock(ctx context.Context, path string) (bool, error)
 	WatchScripts(ctx context.Context, subject string, onChange func(subject, path, script string, deleted bool))
+	ListSubjects(ctx context.Context) ([]string, error)
+}
+
+func StoreByName(name, etcdEndpoints string) (ScriptStore, error) {
+	switch name {
+	case BACKEND_ETCD_NAME:
+		scriptStore, err := NewEtcdScriptStore(etcdEndpoints)
+		if err != nil {
+			return nil, fmt.Errorf("Failed to initialize etcd store: %v", err)
+		}
+
+		return scriptStore, nil
+		// case BACKEND_SQLITE_NAME:
+		// 	// Initialize SQLite backend (placeholder for now)
+		// 	scriptStore, err = msgstore.NewSqliteScriptStore("path/to/db.sqlite") // implement this
+		// 	if err != nil {
+		// 		log.Fatalf("Failed to initialize SQLite store: %v", err)
+		// 	}
+		// case BACKEND_FILE_NAME:
+		// 	// Initialize flat file backend (placeholder for now)
+		// 	scriptStore, err = msgstore.NewFileScriptStore("path/to/scripts") // implement this
+		// 	if err != nil {
+		//
+		// 		log.Fatalf("Failed to initialize file store: %v", err)
+		// 	}
+	}
+
+	return nil, fmt.Errorf("Unknown backend: %s", name)
 }

@@ -57,3 +57,13 @@ func (s *DevStore) TakeLock(ctx context.Context, path string) (bool, error) {
 func (s *DevStore) ReleaseLock(ctx context.Context, path string) error {
 	return nil
 }
+
+func (s *DevStore) ListSubjects(ctx context.Context) ([]string, error) {
+	var subjects []string
+
+	for subject, _ := range s.scripts {
+		subjects = append(subjects, subject)
+	}
+
+	return subjects, nil
+}

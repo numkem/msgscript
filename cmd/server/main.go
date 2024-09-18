@@ -29,6 +29,7 @@ func main() {
 	etcdURL := flag.String("etcdurl", "localhost:2379", "URL of etcd server")
 	natsURL := flag.String("natsurl", "", "URL of NATS server")
 	logLevel := flag.String("log", "info", "Logging level (debug, info, warn, error)")
+	httpPort := flag.Int("port", DEFAULT_HTTP_PORT, "HTTP port to bind to")
 	flag.Parse()
 
 	// Set up logging
@@ -39,27 +40,9 @@ func main() {
 	log.SetLevel(level)
 
 	// Create the ScriptStore based on the selected backend
-	var scriptStore msgstore.ScriptStore
-	switch *backendFlag {
-	case msgstore.BACKEND_ETCD_NAME:
-		scriptStore, err = msgstore.NewEtcdScriptStore(*etcdURL)
-		if err != nil {
-			log.Fatalf("Failed to initialize etcd store: %v", err)
-		}
-	// case BACKEND_SQLITE_NAME:
-	// 	// Initialize SQLite backend (placeholder for now)
-	// 	scriptStore, err = msgstore.NewSqliteScriptStore("path/to/db.sqlite") // implement this
-	// 	if err != nil {
-	// 		log.Fatalf("Failed to initialize SQLite store: %v", err)
-	// 	}
-	// case BACKEND_FILE_NAME:
-	// 	// Initialize flat file backend (placeholder for now)
-	// 	scriptStore, err = msgstore.NewFileScriptStore("path/to/scripts") // implement this
-	// 	if err != nil {
-	// 		log.Fatalf("Failed to initialize file store: %v", err)
-	// 	}
-	default:
-		log.Fatalf("Unknown backend: %s", *backendFlag)
+	scriptStore, err := msgstore.StoreByName(*backendFlag, *etcdURL)
+	if err != nil {
+		log.Fatalf("failed to initialize the script store: %v", err)
 	}
 
 	// Connect to NATS
@@ -101,10 +84,14 @@ func main() {
 		log.Fatalf("Failed to subscribe to NATS subjects: %v", err)
 	}
 
+	// Start HTTP Server
+	go runHTTP(*httpPort, *natsURL)
+
 	// Listen for system interrupts for graceful shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	<-sigChan
+	cancel()
 
 	log.Info("Received shutdown signal, stopping server...")
 	scriptExecutor.Stop()

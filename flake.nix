@@ -8,8 +8,8 @@
   outputs =
     { self, nixpkgs }:
     let
-      version = "0.1.2";
-      vendorHash = "sha256-i4ZNVZpWfkhlvzNCqZu4VfWSwoovNCBhhfVxvaaPrNo=";
+      version = "0.1.3";
+      vendorHash = "sha256-K5VF5qTrJ3Ia+f/X19xKLRgwcVjMmYqiIO3Ncgz+Vz4=";
 
       buildCli =
         system:
@@ -41,6 +41,8 @@
           src = self;
 
           subPackages = [ "cmd/server" ];
+
+          doCheck = false; # Requires networking, will just timeout
 
           postInstall = ''
             mv $out/bin/server $out/bin/msgscript

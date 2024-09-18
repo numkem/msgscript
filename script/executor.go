@@ -2,14 +2,29 @@ package script
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"sync"
 
 	"github.com/cjoudrey/gluahttp"
 	luajson "github.com/layeh/gopher-json"
+	_ "github.com/lib/pq"
 	"github.com/nats-io/nats.go"
 	log "github.com/sirupsen/logrus"
+	"github.com/tengattack/gluasql"
+	mysql "github.com/tengattack/gluasql/mysql"
+	sqlite3 "github.com/tengattack/gluasql/sqlite3"
+	"github.com/vadv/gopher-lua-libs/cmd"
+	"github.com/vadv/gopher-lua-libs/filepath"
+	"github.com/vadv/gopher-lua-libs/inspect"
+	"github.com/vadv/gopher-lua-libs/ioutil"
+	"github.com/vadv/gopher-lua-libs/runtime"
+	"github.com/vadv/gopher-lua-libs/strings"
+	"github.com/vadv/gopher-lua-libs/time"
+	"github.com/yuin/gluare"
 	lua "github.com/yuin/gopher-lua"
+	lfs "layeh.com/gopher-lfs"
 
 	luamodules "github.com/numkem/msgscript/lua"
 	msgstore "github.com/numkem/msgscript/store"
@@ -40,25 +55,30 @@ func (se *ScriptExecutor) HandleMessage(ctx context.Context, subject string, pay
 	scripts, err := se.store.GetScripts(ctx, subject)
 	if err != nil {
 		log.Errorf("failed to get scripts for subject %s: %v", subject, err)
+		return
 	}
 
 	if len(scripts) == 0 {
 		log.Infof("No script found for subject: %s", subject)
 		return
-
 	}
 
+	var wg sync.WaitGroup
+	resp := sync.Map{}
+	// Loop through each scripts attached to the subject as there might be more than one
 	for path, script := range scripts {
-		// Run the Lua script in a separate goroutine to handle the message
+		wg.Add(1)
+		// Run the Lua script in a separate goroutine to handle the message for each script
 		go func(script string) {
-			// to help with locks, sleep for a random amount
+			defer wg.Done()
 			fields := log.Fields{
 				"path": path,
 			}
 
 			locked, err := se.store.TakeLock(ctx, path)
 			if err != nil {
-				log.WithFields(fields).Errorf("failed to get lock: %v", err)
+				log.WithFields(fields).Debugf("failed to get lock: %v", err)
+				log.WithFields(fields).Debug("bailing out")
 				return
 			}
 
@@ -66,7 +86,7 @@ func (se *ScriptExecutor) HandleMessage(ctx context.Context, subject string, pay
 				log.WithFields(fields).Debug("We don't have a lock, giving up")
 				return
 			}
-			defer se.store.ReleaseLock(context.Background(), path)
+			defer se.store.ReleaseLock(ctx, path)
 
 			log.WithFields(fields).Debug("executing script")
 
@@ -76,8 +96,20 @@ func (se *ScriptExecutor) HandleMessage(ctx context.Context, subject string, pay
 
 			// Set up the Lua state with the subject and payload
 			L.PreloadModule("http", gluahttp.NewHttpModule(&http.Client{}).Loader)
+			L.PreloadModule("mysql", mysql.Loader)
+			L.PreloadModule("re", gluare.Loader)
+			L.PreloadModule("sqlite3", sqlite3.Loader)
+			cmd.Preload(L)
+			filepath.Preload(L)
+			gluasql.Preload(L)
+			inspect.Preload(L)
+			ioutil.Preload(L)
+			lfs.Preload(L)
 			luajson.Preload(L)
 			luamodules.PreloadNats(L, se.nc)
+			runtime.Preload(L)
+			strings.Preload(L)
+			time.Preload(L)
 
 			if err := L.DoString(script); err != nil {
 				msg := fmt.Sprintf("error parsing Lua script: %v", err)
@@ -100,15 +132,30 @@ func (se *ScriptExecutor) HandleMessage(ctx context.Context, subject string, pay
 			// Retrieve the result from the Lua state (assuming it's a string)
 			result := L.Get(-1)
 			if str, ok := result.(lua.LString); ok {
-				replyFunc(string(str))
+				resp.Store(path, string(str))
 			} else {
 				log.WithFields(fields).Warn("Script did not return a string")
 			}
 		}(script)
 	}
+
+	wg.Wait()
+
+	// Return a JSON representation of the result of each function ran
+	r := make(map[string]string)
+	resp.Range(func(k, v any) bool {
+		r[k.(string)] = v.(string)
+		return true
+	})
+
+	j, err := json.Marshal(r)
+	if err != nil {
+		log.WithField("subject", subject).Error("failed to marshal response")
+	}
+	replyFunc(string(j))
 }
 
-// Stop gracefully shuts down the ScriptExecutor and stops watching for changes
+// Stop gracefully shuts down the ScriptExecutor and stops watching for messages
 func (se *ScriptExecutor) Stop() {
 	se.cancelFunc()
 	log.Debug("ScriptExecutor stopped")
