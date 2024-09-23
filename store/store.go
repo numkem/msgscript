@@ -20,6 +20,9 @@ type ScriptStore interface {
 	TakeLock(ctx context.Context, path string) (bool, error)
 	WatchScripts(ctx context.Context, subject string, onChange func(subject, path, script string, deleted bool))
 	ListSubjects(ctx context.Context) ([]string, error)
+	LoadLibrairies(ctx context.Context, libraryPaths []string) ([]string, error)
+	AddLibrary(ctx context.Context, library, path string) error
+	RemoveLibrary(ctx context.Context, path string) error
 }
 
 func StoreByName(name, etcdEndpoints string) (ScriptStore, error) {

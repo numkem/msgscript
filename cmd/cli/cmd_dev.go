@@ -25,6 +25,7 @@ func init() {
 	devCmd.PersistentFlags().StringP("subject", "s", "", "The NATS subject to respond to")
 	devCmd.PersistentFlags().StringP("name", "n", "", "The name of the script in the backend")
 	devCmd.PersistentFlags().StringP("payload", "p", "", "Path to or actual payload to send to the function")
+	devCmd.PersistentFlags().StringP("library", "l", "", "Path to a folder containing libraries to load for the function")
 }
 
 func natsUrlByEnv() string {
@@ -36,19 +37,12 @@ func natsUrlByEnv() string {
 }
 
 func devCmdRun(cmd *cobra.Command, args []string) {
-	store := msgstore.NewDevStore()
-
-	// Connect to NATS
-	natsURL := cmd.Flag("natsurl").Value.String()
-	if natsURL == "" {
-		natsURL = natsUrlByEnv()
-	}
-	nc, err := nats.Connect(natsURL)
+	store, err := msgstore.NewDevStore(cmd.Flag("library").Value.String())
 	if err != nil {
-		log.Fatalf("Failed to connect to NATS: %v", err)
+		log.Errorf("failed to create store: %v", err)
+		return
 	}
-	defer nc.Close()
-	scriptExecutor := script.NewScriptExecutor(store, nc)
+	scriptExecutor := script.NewScriptExecutor(store, nil)
 
 	subject := cmd.Flag("subject").Value.String()
 	name := cmd.Flag("name").Value.String()

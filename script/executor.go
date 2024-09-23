@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/cjoudrey/gluahttp"
@@ -20,7 +21,7 @@ import (
 	"github.com/vadv/gopher-lua-libs/inspect"
 	"github.com/vadv/gopher-lua-libs/ioutil"
 	"github.com/vadv/gopher-lua-libs/runtime"
-	"github.com/vadv/gopher-lua-libs/strings"
+	luastrings "github.com/vadv/gopher-lua-libs/strings"
 	"github.com/vadv/gopher-lua-libs/time"
 	"github.com/yuin/gluare"
 	lua "github.com/yuin/gopher-lua"
@@ -75,6 +76,16 @@ func (se *ScriptExecutor) HandleMessage(ctx context.Context, subject string, pay
 				"path": path,
 			}
 
+			// Read the script to get the headers (for the libraries for example)
+			sr := new(ScriptReader)
+			sr.ReadString(script)
+
+			libs, err := se.store.LoadLibrairies(ctx, sr.Script.LibKeys)
+			if err != nil {
+				log.WithFields(fields).Errorf("failed to read librairies: %v", err)
+				return
+			}
+
 			locked, err := se.store.TakeLock(ctx, path)
 			if err != nil {
 				log.WithFields(fields).Debugf("failed to get lock: %v", err)
@@ -108,10 +119,17 @@ func (se *ScriptExecutor) HandleMessage(ctx context.Context, subject string, pay
 			luajson.Preload(L)
 			luamodules.PreloadNats(L, se.nc)
 			runtime.Preload(L)
-			strings.Preload(L)
+			luastrings.Preload(L)
 			time.Preload(L)
 
-			if err := L.DoString(script); err != nil {
+			var sb strings.Builder
+			for _, l := range libs {
+				sb.WriteString(l + "\n")
+			}
+			sb.WriteString(script)
+			log.Debugf("script: %+v\n", sb.String())
+
+			if err := L.DoString(sb.String()); err != nil {
 				msg := fmt.Sprintf("error parsing Lua script: %v", err)
 				log.WithFields(fields).Errorf(msg)
 				replyFunc("error: " + msg)

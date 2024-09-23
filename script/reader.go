@@ -12,6 +12,7 @@ type Script struct {
 	Name    string
 	Subject string
 	Content []byte
+	LibKeys []string
 }
 
 type ScriptReader struct {
@@ -32,6 +33,17 @@ func (s *ScriptReader) ReadFile(filename string) error {
 	return nil
 }
 
+func (s *ScriptReader) ReadString(str string) error {
+	r := strings.NewReader(str)
+
+	err := s.Read(r)
+	if err != nil {
+		return fmt.Errorf("failed to read string buffer: %v", err)
+	}
+
+	return nil
+}
+
 func getHeaderValue(line, header string) string {
 	if strings.HasPrefix(strings.ToLower(line), header) {
 		return strings.TrimSpace(strings.Replace(line, header, "", 1))
@@ -47,11 +59,14 @@ func (s *ScriptReader) Read(f io.Reader) error {
 	var b strings.Builder
 	for scanner.Scan() {
 		line := scanner.Text()
-		if subject := getHeaderValue(line, "--* subject: "); subject != "" {
-			s.Script.Subject = subject
+		if v := getHeaderValue(line, "--* subject: "); v != "" {
+			s.Script.Subject = v
 		}
-		if name := getHeaderValue(line, "--* name: "); name != "" {
-			s.Script.Name = name
+		if v := getHeaderValue(line, "--* name: "); v != "" {
+			s.Script.Name = v
+		}
+		if v := getHeaderValue(line, "--* require: "); v != "" {
+			s.Script.LibKeys = append(s.Script.LibKeys, v)
 		}
 
 		_, err := b.WriteString(line + "\n")

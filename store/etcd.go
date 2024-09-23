@@ -14,9 +14,10 @@ import (
 )
 
 const (
-	ETCD_TIMEOUT           = 3 * time.Second
-	ETCD_SESSION_TTL       = 3 // In seconds
-	ETCD_SCRIPT_KEY_PREFIX = "msgscript/scripts"
+	ETCD_TIMEOUT            = 3 * time.Second
+	ETCD_SESSION_TTL        = 3 // In seconds
+	ETCD_SCRIPT_KEY_PREFIX  = "msgscript/scripts"
+	ETCD_LIBRARY_KEY_PREFIX = "msgscript/libs"
 )
 
 // EtcdScriptStore stores Lua scripts in etcd, supporting multiple scripts per subject
@@ -222,4 +223,44 @@ func (e *EtcdScriptStore) ListSubjects(ctx context.Context) ([]string, error) {
 	}
 
 	return subjects, nil
+}
+
+func (e *EtcdScriptStore) LoadLibrairies(ctx context.Context, libraryPaths []string) ([]string, error) {
+	var libraries []string
+	for _, path := range libraryPaths {
+		key := strings.Join([]string{ETCD_LIBRARY_KEY_PREFIX, path}, "/")
+
+		resp, err := e.client.Get(ctx, key)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read key %s: %v", key, err)
+		}
+
+		if len(resp.Kvs) != 1 {
+			return nil, fmt.Errorf("key %s doesn't exists", key)
+		}
+
+		libraries = append(libraries, string(resp.Kvs[0].Value))
+	}
+
+	return libraries, nil
+}
+
+func (e *EtcdScriptStore) AddLibrary(ctx context.Context, content string, path string) error {
+	key := strings.Join([]string{ETCD_LIBRARY_KEY_PREFIX, path}, "/")
+	_, err := e.client.Put(ctx, key, content)
+	if err != nil {
+		return fmt.Errorf("failed to store library key %s: %v", key, err)
+	}
+
+	return nil
+}
+
+func (e *EtcdScriptStore) RemoveLibrary(ctx context.Context, path string) error {
+	key := strings.Join([]string{ETCD_LIBRARY_KEY_PREFIX, path}, "/")
+	_, err := e.client.Delete(ctx, key)
+	if err != nil {
+		return fmt.Errorf("failed to delete library key %s: %v", key, err)
+	}
+
+	return nil
 }
