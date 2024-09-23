@@ -74,11 +74,11 @@ func (p *httpNatsProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	msg, err := p.nc.RequestWithContext(ctx, subject, body)
 	if err != nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
+		w.Write([]byte(err.Error()))
 	} else {
 		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(msg.Data))
 	}
-
-	w.Write([]byte(msg.Data))
 }
 
 func runHTTP(port int, natsURL string) {
