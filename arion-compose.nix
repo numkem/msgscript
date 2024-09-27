@@ -1,18 +1,23 @@
+{ pkgs, ... }:
+
 {
   project.name = "msgscript";
 
-  services.etcd-nats =
-    { ... }:
-    {
-      nixos.useSystemd = true;
-      nixos.configuration = {
-        services.etcd.enable = true;
-        services.nats.enable = true;
-      };
+  services = {
+    etcd = {
+      image.enableRecommendedContents = true;
       service.useHostStore = true;
+      service.command = [ "${pkgs.etcd_3_5}/bin/etcd" ];
       service.ports = [
         "2379:2379"
-        "4442:4442"
       ];
     };
+
+    nats = {
+      image.enableRecommendedContents = true;
+      service.useHostStore = true;
+      service.command = [ "${pkgs.nats-server}/bin/nats-server" ];
+      service.ports = [ "4222:4222" ];
+    };
+  };
 }
