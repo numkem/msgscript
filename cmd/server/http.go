@@ -38,14 +38,13 @@ func (p *httpNatsProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// We only support POST requests
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("Only POST request are supported"))
+		w.Write([]byte("Only POST requests are supported"))
 		return
 	}
 	defer r.Body.Close()
 
-	// URL should look like /funcs.foobar/yo
+	// URL should look like /funcs.foobar
 	// Where funcs.foobar is the subject for NATS
-	// Where yo would be the name of the script
 	ss := strings.Split(r.URL.Path, "/")
 	// Validate URL structure
 	if len(ss) != 2 {
