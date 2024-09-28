@@ -45,7 +45,7 @@ func (s *ScriptReader) ReadString(str string) error {
 }
 
 func getHeaderValue(line, header string) string {
-	if strings.HasPrefix(strings.ToLower(line), header) {
+	if strings.HasPrefix(line, header) {
 		return strings.TrimSpace(strings.Replace(line, header, "", 1))
 	}
 
