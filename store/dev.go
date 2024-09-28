@@ -21,41 +21,43 @@ type DevStore struct {
 }
 
 func NewDevStore(libraryPath string) (ScriptStore, error) {
-	stat, err := os.Stat(libraryPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read path %s: %v", libraryPath, err)
-	}
-	if !stat.IsDir() {
-		return nil, fmt.Errorf("given library path %s isn't a directory", libraryPath)
-	}
-
 	store := &DevStore{
 		scripts:   make(map[string]map[string]string),
 		libraries: make(map[string]string),
 	}
 
-	fsys := os.DirFS(libraryPath)
-	err = fs.WalkDir(fsys, ".", func(filename string, d os.DirEntry, err error) error {
+	if libraryPath != "" {
+		stat, err := os.Stat(libraryPath)
 		if err != nil {
-			return err
+			return nil, fmt.Errorf("failed to read library path %s: %v", libraryPath, err)
+		}
+		if !stat.IsDir() {
+			return nil, fmt.Errorf("given library path %s isn't a directory", libraryPath)
 		}
 
-		if path.Ext(filename) == ".lua" {
-			filepath := path.Join(libraryPath, filename)
-			content, err := os.ReadFile(filepath)
+		fsys := os.DirFS(libraryPath)
+		err = fs.WalkDir(fsys, ".", func(filename string, d os.DirEntry, err error) error {
 			if err != nil {
-				return fmt.Errorf("failed to read %s: %v", filename, err)
+				return err
 			}
 
-			p := strings.Replace(strings.Replace(filename, libraryPath, "", 1), path.Ext(filename), "", 1)
-			log.Debugf("loading library %s", p)
-			store.AddLibrary(context.Background(), string(content), p)
-		}
+			if path.Ext(filename) == ".lua" {
+				filepath := path.Join(libraryPath, filename)
+				content, err := os.ReadFile(filepath)
+				if err != nil {
+					return fmt.Errorf("failed to read %s: %v", filename, err)
+				}
 
-		return nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to walk through directory %s for library files: %v", libraryPath, err)
+				p := strings.Replace(strings.Replace(filename, libraryPath, "", 1), path.Ext(filename), "", 1)
+				log.Debugf("loading library %s", p)
+				store.AddLibrary(context.Background(), string(content), p)
+			}
+
+			return nil
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to walk through directory %s for library files: %v", libraryPath, err)
+		}
 	}
 
 	return store, nil
