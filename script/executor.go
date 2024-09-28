@@ -67,13 +67,14 @@ func (se *ScriptExecutor) HandleMessage(ctx context.Context, subject string, pay
 	var wg sync.WaitGroup
 	resp := sync.Map{}
 	// Loop through each scripts attached to the subject as there might be more than one
-	for path, script := range scripts {
+	for name, script := range scripts {
 		wg.Add(1)
 		// Run the Lua script in a separate goroutine to handle the message for each script
 		go func(script string) {
 			defer wg.Done()
 			fields := log.Fields{
-				"path": path,
+				"subject": subject,
+				"path":    name,
 			}
 
 			// Read the script to get the headers (for the libraries for example)
@@ -86,7 +87,7 @@ func (se *ScriptExecutor) HandleMessage(ctx context.Context, subject string, pay
 				return
 			}
 
-			locked, err := se.store.TakeLock(ctx, path)
+			locked, err := se.store.TakeLock(ctx, name)
 			if err != nil {
 				log.WithFields(fields).Debugf("failed to get lock: %v", err)
 				log.WithFields(fields).Debug("bailing out")
@@ -97,7 +98,7 @@ func (se *ScriptExecutor) HandleMessage(ctx context.Context, subject string, pay
 				log.WithFields(fields).Debug("We don't have a lock, giving up")
 				return
 			}
-			defer se.store.ReleaseLock(ctx, path)
+			defer se.store.ReleaseLock(ctx, name)
 
 			log.WithFields(fields).Debug("executing script")
 
@@ -127,12 +128,12 @@ func (se *ScriptExecutor) HandleMessage(ctx context.Context, subject string, pay
 				sb.WriteString(l + "\n")
 			}
 			sb.WriteString(script)
-			log.Debugf("script: %+v\n", sb.String())
+			log.WithFields(fields).Debugf("script:\n%+s\n\n", sb.String())
 
 			if err := L.DoString(sb.String()); err != nil {
 				msg := fmt.Sprintf("error parsing Lua script: %v", err)
 				log.WithFields(fields).Errorf(msg)
-				replyFunc("error: " + msg)
+				resp.Store(name, fmt.Sprintf("error: %v", err))
 				return
 			}
 
@@ -143,14 +144,14 @@ func (se *ScriptExecutor) HandleMessage(ctx context.Context, subject string, pay
 			}, lua.LString(subject), lua.LString(string(payload))); err != nil {
 				msg := fmt.Sprintf("failed to call OnMessage function: %v", err)
 				log.WithFields(fields).Error(msg)
-				replyFunc("error: " + msg)
+				resp.Store(name, fmt.Sprintf("error: %v", err))
 				return
 			}
 
 			// Retrieve the result from the Lua state (assuming it's a string)
 			result := L.Get(-1)
 			if str, ok := result.(lua.LString); ok {
-				resp.Store(path, string(str))
+				resp.Store(name, string(str))
 			} else {
 				log.WithFields(fields).Warn("Script did not return a string")
 			}
@@ -158,6 +159,7 @@ func (se *ScriptExecutor) HandleMessage(ctx context.Context, subject string, pay
 	}
 
 	wg.Wait()
+	log.WithField("subject", subject).Debugf("finished running %d scripts", len(scripts))
 
 	// Return a JSON representation of the result of each function ran
 	r := make(map[string]string)

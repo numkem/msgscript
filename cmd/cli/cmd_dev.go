@@ -2,7 +2,6 @@ package main
 
 import (
 	"os"
-	"sync"
 
 	"github.com/nats-io/nats.go"
 	log "github.com/sirupsen/logrus"
@@ -97,15 +96,14 @@ func devCmdRun(cmd *cobra.Command, args []string) {
 		"lua_filename": args[0],
 	}
 
-	var wg sync.WaitGroup
-	wg.Add(1)
+	stopChan := make(chan struct{}, 1)
 	log.WithFields(fields).Debug("running the function")
 	scriptExecutor.HandleMessage(cmd.Context(), subject, payload, func(reply string) {
-		log.Debug("function executed")
-		cmd.Println(reply)
-		wg.Done()
+		log.WithFields(log.Fields{"subject": subject, "payload": payload}).Debug("message replied")
+		cmd.Printf("Result: %v\n", reply)
+		stopChan <- struct{}{}
 	})
 
-	wg.Wait()
+	<-stopChan
 	scriptExecutor.Stop()
 }
