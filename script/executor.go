@@ -120,6 +120,7 @@ func (se *ScriptExecutor) HandleMessage(ctx context.Context, subject string, pay
 			lfs.Preload(L)
 			luajson.Preload(L)
 			luamodules.PreloadNats(L, se.nc)
+			luamodules.PreloadEtcd(L)
 			runtime.Preload(L)
 			luastrings.Preload(L)
 			time.Preload(L)
