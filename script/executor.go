@@ -33,20 +33,21 @@ import (
 
 // ScriptExecutor defines the structure responsible for managing Lua script execution
 type ScriptExecutor struct {
-	store      msgstore.ScriptStore // Interface for the script storage backend
+	cancelFunc context.CancelFunc   // Context cancellation function
 	ctx        context.Context      // Context for cancellation
-	cancelFunc context.CancelFunc   // Context cancellation
-	nc         *nats.Conn
+	nc         *nats.Conn           // Connection to NATS
+	store      msgstore.ScriptStore // Interface for the script storage backend
 }
 
 // NewScriptExecutor creates a new ScriptExecutor using the provided ScriptStore
 func NewScriptExecutor(store msgstore.ScriptStore, nc *nats.Conn) *ScriptExecutor {
 	ctx, cancelFunc := context.WithCancel(context.Background())
+
 	return &ScriptExecutor{
-		store:      store,
-		ctx:        ctx,
 		cancelFunc: cancelFunc,
+		ctx:        ctx,
 		nc:         nc,
+		store:      store,
 	}
 }
 
