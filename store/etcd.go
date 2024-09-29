@@ -27,27 +27,39 @@ type EtcdScriptStore struct {
 	mutexes sync.Map
 }
 
+func EtcdClient(endpoints string) (*clientv3.Client, error) {
+	if e := os.Getenv("ETCD_ENDPOINTS"); e != "" {
+		endpoints = e
+	}
+
+	// HACK: instead of using a global or carry over the variable everywhere,
+	// we set the environment variable if it's not defined so on subsequent calls
+	// it will override whatever value is set
+	err := os.Setenv("ETCD_ENDPOINTS", endpoints)
+	if err != nil {
+		return nil, fmt.Errorf("failed to set ETCD_ENDPOINTS environment variable")
+	}
+
+	return clientv3.New(clientv3.Config{
+		Endpoints:   etcdEndpoints(endpoints),
+		DialTimeout: ETCD_TIMEOUT,
+	})
+}
+
 func etcdEndpoints(endpoints string) []string {
 	return strings.Split(endpoints, ",")
 }
 
 // NewEtcdScriptStore creates a new instance of EtcdScriptStore
-func NewEtcdScriptStore(url string) (*EtcdScriptStore, error) {
-	log.Debugf("Attempting to connect to etcd @ %s", url)
+func NewEtcdScriptStore(endpoints string) (*EtcdScriptStore, error) {
+	log.Debugf("Attempting to connect to etcd @ %s", endpoints)
 
-	if e := os.Getenv("ETCD_ENDPOINTS"); e != "" {
-		url = e
-	}
-
-	client, err := clientv3.New(clientv3.Config{
-		Endpoints:   etcdEndpoints(url),
-		DialTimeout: ETCD_TIMEOUT,
-	})
+	client, err := EtcdClient(endpoints)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to etcd: %v", err)
 	}
 
-	log.Debugf("Connected to etcd @ %s", url)
+	log.Debugf("Connected to etcd @ %s", strings.Join(client.Endpoints(), ","))
 
 	return &EtcdScriptStore{
 		client:  client,
