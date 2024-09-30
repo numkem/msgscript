@@ -48,13 +48,9 @@ func libAddRun(cmd *cobra.Command, args []string) {
 
 	var count int
 	for _, arg := range args {
-		fields := log.Fields{
-			"Path": arg,
-		}
-
 		stat, err := os.Stat(arg)
 		if err != nil {
-			log.WithFields(fields).Errorf("failed to stat %s: %v", arg, err)
+			cmd.PrintErrf("failed to stat %s: %v", arg, err)
 			return
 		}
 
@@ -80,7 +76,7 @@ func libAddRun(cmd *cobra.Command, args []string) {
 			} else {
 				entries, err := os.ReadDir(arg)
 				if err != nil {
-					log.WithFields(fields).Errorf("failed to read directory: %v", err)
+					cmd.PrintErrf("failed to read directory: %v", err)
 					return
 				}
 
@@ -88,7 +84,7 @@ func libAddRun(cmd *cobra.Command, args []string) {
 					if path.Ext(e.Name()) == ".lua" {
 						err = addLibraryFile(store, arg, e.Name())
 						if err != nil {
-							log.WithFields(fields).WithField("filename", e.Name()).Errorf("failed add library file: %v", err)
+							cmd.PrintErrf("failed add library file %s: %v", e.Name(), err)
 							return
 						}
 						count++
@@ -99,12 +95,12 @@ func libAddRun(cmd *cobra.Command, args []string) {
 		} else {
 			err = addLibraryFile(store, "", arg)
 			if err != nil {
-				log.WithFields(fields).Errorf("failed add library file: %v", err)
+				cmd.PrintErrf("failed add library file: %v", err)
 				return
 			}
 
 		}
 	}
 
-	fmt.Printf("Added %d libraries\n", count)
+	cmd.Printf("Added %d libraries\n", count)
 }

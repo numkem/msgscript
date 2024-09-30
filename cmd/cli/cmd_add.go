@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 
-	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
 	"github.com/numkem/msgscript/script"
@@ -40,7 +39,8 @@ func init() {
 func addCmdRun(cmd *cobra.Command, args []string) {
 	scriptStore, err := msgstore.StoreByName(cmd.Flag("backend").Value.String(), cmd.Flag("etcdurls").Value.String())
 	if err != nil {
-		log.Errorf("failed to get script store: %v", err)
+		cmd.PrintErrf("failed to get script store: %v", err)
+		return
 	}
 	subject := cmd.Flag("subject").Value.String()
 	name := cmd.Flag("name").Value.String()
@@ -49,12 +49,12 @@ func addCmdRun(cmd *cobra.Command, args []string) {
 	r := new(script.ScriptReader)
 	err = r.ReadFile(args[0])
 	if err != nil {
-		log.Errorf("failed to read the script file %s: %v", args[0], err)
+		cmd.PrintErrf("failed to read the script file %s: %v", args[0], err)
 		return
 	}
 	if subject == "" {
 		if r.Script.Subject == "" {
-			log.Errorf("subject is required")
+			cmd.PrintErrf("subject is required")
 			return
 		}
 
@@ -62,7 +62,7 @@ func addCmdRun(cmd *cobra.Command, args []string) {
 	}
 	if name == "" {
 		if r.Script.Name == "" {
-			log.Errorf("name is required")
+			cmd.PrintErrf("name is required")
 			return
 		}
 
@@ -72,8 +72,9 @@ func addCmdRun(cmd *cobra.Command, args []string) {
 	// Add the script to etcd under the given subject
 	err = scriptStore.AddScript(cmd.Context(), subject, name, string(r.Script.Content))
 	if err != nil {
-		log.Fatalf("Failed to add script to etcd: %v", err)
+		cmd.PrintErrf("Failed to add script to etcd: %v", err)
+		return
 	}
 
-	fmt.Printf("Script added successfully for subject %s named %s \n", subject, name)
+	cmd.Printf("Script added successfully for subject %s named %s \n", subject, name)
 }
