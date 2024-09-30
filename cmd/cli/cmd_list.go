@@ -34,6 +34,11 @@ func listCmdRun(cmd *cobra.Command, args []string) {
 		return
 	}
 
+	if len(subjects) == 0 {
+		cmd.Print("No script in store\n")
+		return
+	}
+
 	for _, subject := range subjects {
 		scripts, err := scriptStore.GetScripts(cmd.Context(), subject)
 		if err != nil {
