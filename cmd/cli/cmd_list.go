@@ -10,9 +10,10 @@ import (
 )
 
 var listCmd = &cobra.Command{
-	Use:   "list",
-	Short: "list all the scripts registered in the store",
-	Run:   listCmdRun,
+	Use:     "list",
+	Aliases: []string{"ls"},
+	Short:   "list all the scripts registered in the store",
+	Run:     listCmdRun,
 }
 
 func init() {
