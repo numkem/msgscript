@@ -14,7 +14,7 @@ const (
 
 type ScriptStore interface {
 	AddScript(ctx context.Context, subject string, name string, script string) error
-	DeleteScript(ctx context.Context, subject, scriptID string) error
+	DeleteScript(ctx context.Context, subject, name string) error
 	GetScripts(ctx context.Context, subject string) (map[string]string, error)
 	ReleaseLock(ctx context.Context, path string) error
 	TakeLock(ctx context.Context, path string) (bool, error)

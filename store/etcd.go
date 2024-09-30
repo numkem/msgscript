@@ -105,37 +105,37 @@ func (e *EtcdScriptStore) GetScripts(ctx context.Context, subject string) (map[s
 	return scripts, nil
 }
 
-// DeleteScript deletes a specific Lua script for a subject by its scriptID
-func (e *EtcdScriptStore) DeleteScript(ctx context.Context, subject, scriptID string) error {
-	key := fmt.Sprintf("%s%s/%s", e.prefix, subject, scriptID)
+// DeleteScript deletes a specific Lua script for a subject by its name
+func (e *EtcdScriptStore) DeleteScript(ctx context.Context, subject, name string) error {
+	key := fmt.Sprintf("%s/%s/%s", e.prefix, subject, name)
 
 	// Delete script from etcd
 	_, err := e.client.Delete(ctx, key)
 	if err != nil {
-		return fmt.Errorf("failed to delete script for subject '%s' with ID '%s': %v", subject, scriptID, err)
+		return fmt.Errorf("failed to delete script for subject '%s' with ID '%s': %v", subject, name, err)
 	}
 
-	log.Debugf("Deleted script for subject %s with ID %s", subject, scriptID)
+	log.Debugf("Deleted script for subject %s with ID %s", subject, name)
 	return nil
 }
 
 // WatchScripts watches for changes to scripts for a specific subject
-func (e *EtcdScriptStore) WatchScripts(ctx context.Context, subject string, onChange func(subject, scriptID, script string, deleted bool)) {
+func (e *EtcdScriptStore) WatchScripts(ctx context.Context, subject string, onChange func(subject, name, script string, deleted bool)) {
 	keyPrefix := fmt.Sprintf("%s/%s/", e.prefix, subject)
 
 	watchChan := e.client.Watch(ctx, keyPrefix, clientv3.WithPrefix())
 
 	for watchResp := range watchChan {
 		for _, ev := range watchResp.Events {
-			scriptID := string(ev.Kv.Key[len(keyPrefix):])
+			name := string(ev.Kv.Key[len(keyPrefix):])
 			switch ev.Type {
 			case clientv3.EventTypePut:
 				script := string(ev.Kv.Value)
-				log.Debugf("Script added/updated for subject: %s, ID: %s", subject, scriptID)
-				onChange(subject, scriptID, script, false)
+				log.Debugf("Script added/updated for subject: %s, ID: %s", subject, name)
+				onChange(subject, name, script, false)
 			case clientv3.EventTypeDelete:
-				log.Debugf("Script deleted for subject: %s, ID: %s", subject, scriptID)
-				onChange(subject, scriptID, "", true)
+				log.Debugf("Script deleted for subject: %s, ID: %s", subject, name)
+				onChange(subject, name, "", true)
 			}
 		}
 	}
