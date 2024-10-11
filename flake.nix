@@ -8,7 +8,7 @@
   outputs =
     { self, nixpkgs }:
     let
-      version = "0.1.7";
+      version = "0.1.9";
       vendorHash = "sha256-K5VF5qTrJ3Ia+f/X19xKLRgwcVjMmYqiIO3Ncgz+Vz4=";
 
       mkCli =
@@ -114,6 +114,7 @@
             etcd
             natscli
             nats-top
+            pandoc
 
             # Server compose
             arion
