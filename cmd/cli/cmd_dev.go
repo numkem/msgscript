@@ -7,6 +7,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
+	msgplugin "github.com/numkem/msgscript/plugins"
 	"github.com/numkem/msgscript/script"
 	msgstore "github.com/numkem/msgscript/store"
 )
@@ -23,8 +24,13 @@ func init() {
 
 	devCmd.PersistentFlags().StringP("subject", "s", "", "The NATS subject to respond to")
 	devCmd.PersistentFlags().StringP("name", "n", "", "The name of the script in the backend")
-	devCmd.PersistentFlags().StringP("payload", "p", "", "Path to or actual payload to send to the function")
+	devCmd.PersistentFlags().StringP("input", "i", "", "Path to or actual payload to send to the function")
 	devCmd.PersistentFlags().StringP("library", "l", "", "Path to a folder containing libraries to load for the function")
+	devCmd.PersistentFlags().StringP("pluginDir", "p", "", "Path to a folder with plugins")
+
+	devCmd.MarkFlagRequired("subject")
+	devCmd.MarkFlagRequired("name")
+	devCmd.MarkFlagRequired("input")
 }
 
 func natsUrlByEnv() string {
@@ -38,10 +44,20 @@ func natsUrlByEnv() string {
 func devCmdRun(cmd *cobra.Command, args []string) {
 	store, err := msgstore.NewDevStore(cmd.Flag("library").Value.String())
 	if err != nil {
-		log.Errorf("failed to create store: %v", err)
+		cmd.PrintErrf("failed to create store: %v\n", err)
 		return
 	}
-	scriptExecutor := script.NewScriptExecutor(store, nil)
+
+	var plugins []msgplugin.PreloadFunc
+	if path := cmd.Flag("pluginDir").Value.String(); path != "" {
+		plugins, err = msgplugin.ReadPluginDir(path)
+		if err != nil {
+			cmd.PrintErrf("failed to read plugins: %v\n", err)
+			return
+		}
+	}
+
+	scriptExecutor := script.NewScriptExecutor(store, plugins, nil)
 
 	subject := cmd.Flag("subject").Value.String()
 	name := cmd.Flag("name").Value.String()
@@ -50,13 +66,13 @@ func devCmdRun(cmd *cobra.Command, args []string) {
 	r := new(script.ScriptReader)
 	err = r.ReadFile(args[0])
 	if err != nil {
-		log.Errorf("failed to read the script file %s: %v", args[0], err)
+		log.Errorf("failed to read the script file %s: %v\n", args[0], err)
 		return
 	}
 
 	if subject == "" {
 		if r.Script.Subject == "" {
-			log.Errorf("subject is required")
+			cmd.PrintErrf("subject is required\n")
 			return
 		}
 
@@ -64,7 +80,7 @@ func devCmdRun(cmd *cobra.Command, args []string) {
 	}
 	if name == "" {
 		if r.Script.Name == "" {
-			log.Errorf("name is required")
+			cmd.PrintErrf("name is required\n")
 			return
 		}
 
@@ -74,13 +90,13 @@ func devCmdRun(cmd *cobra.Command, args []string) {
 	// Add the given script to the store
 	store.AddScript(cmd.Context(), subject, name, string(r.Script.Content))
 
-	payloadFlag := cmd.Flag("payload").Value.String()
+	payloadFlag := cmd.Flag("input").Value.String()
 	var payload []byte
 	// Check if the payload is a path to a file
 	if _, err := os.Stat(payloadFlag); err == nil {
 		content, err := os.ReadFile(payloadFlag)
 		if err != nil {
-			log.Errorf("failed to read payload file %s: %v", payloadFlag, err)
+			cmd.PrintErrf("failed to read payload file %s: %v\n", payloadFlag, err)
 			return
 		}
 

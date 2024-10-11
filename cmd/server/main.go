@@ -11,6 +11,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/net/context"
 
+	msgplugin "github.com/numkem/msgscript/plugins"
 	"github.com/numkem/msgscript/script"
 	msgstore "github.com/numkem/msgscript/store"
 )
@@ -30,6 +31,7 @@ func main() {
 	natsURL := flag.String("natsurl", "", "URL of NATS server")
 	logLevel := flag.String("log", "info", "Logging level (debug, info, warn, error)")
 	httpPort := flag.Int("port", DEFAULT_HTTP_PORT, "HTTP port to bind to")
+	pluginDir := flag.String("plugin", "", "Plugin directory")
 	flag.Parse()
 
 	// Set up logging
@@ -56,7 +58,14 @@ func main() {
 	defer nc.Close()
 
 	// Initialize ScriptExecutor
-	scriptExecutor := script.NewScriptExecutor(scriptStore, nc)
+	var plugins []msgplugin.PreloadFunc
+	if *pluginDir != "" {
+		plugins, err = msgplugin.ReadPluginDir(*pluginDir)
+		if err != nil {
+			log.Fatalf("failed to read plugins: %v", err)
+		}
+	}
+	scriptExecutor := script.NewScriptExecutor(scriptStore, plugins, nc)
 
 	log.Info("Starting message watch...")
 

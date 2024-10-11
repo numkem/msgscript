@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/nats-io/nats.go"
-	lua "github.com/yuin/gopher-lua"
+	"github.com/yuin/gopher-lua"
 )
 
 var nc *nats.Conn

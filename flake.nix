@@ -11,11 +11,8 @@
       version = "0.1.7";
       vendorHash = "sha256-K5VF5qTrJ3Ia+f/X19xKLRgwcVjMmYqiIO3Ncgz+Vz4=";
 
-      buildCli =
-        system:
-        let
-          pkgs = import nixpkgs { inherit system; };
-        in
+      mkCli =
+        pkgs:
         pkgs.buildGoModule {
           pname = "msgscript-cli";
           inherit version vendorHash;
@@ -29,11 +26,8 @@
           '';
         };
 
-      buildServer =
-        system:
-        let
-          pkgs = import nixpkgs { inherit system; };
-        in
+      mkServer =
+        pkgs:
         pkgs.buildGoModule {
           pname = "msgscript";
           inherit version vendorHash;
@@ -49,6 +43,30 @@
           '';
         };
 
+      mkPlugin =
+        pkgs: name: path:
+        pkgs.buildGoModule {
+          name = "msgscript-plugin-${name}";
+
+          inherit vendorHash;
+
+          src = self;
+
+          subPackages = [ path ];
+
+          doUnpack = false;
+          doCheck = false;
+
+          buildPhase = ''
+            go build -buildmode=plugin -o ${name}.so ${path}/main.go
+          '';
+
+          installPhase = ''
+            mkdir $out
+            cp ${name}.so $out/
+          '';
+        };
+
       mkOverlay = system: {
         default = (
           final: prev: {
@@ -59,14 +77,29 @@
       };
     in
     {
-      packages.x86_64-linux = rec {
-        cli = buildCli "x86_64-linux";
-        server = buildServer "x86_64-linux";
-        default = server;
-      };
+      packages.x86_64-linux =
+        let
+          pkgs = import nixpkgs { system = "x86_64-linux"; };
+          lib = pkgs.lib;
+        in
+        rec {
+          cli = mkCli pkgs;
+          server = mkServer pkgs;
+          default = server;
+
+          plugins =
+            let
+              pluginDirs = lib.remove "" (
+                lib.mapAttrsToList (name: kind: if kind == "directory" then name else "") (
+                  builtins.readDir "${self}/plugins/"
+                )
+              );
+            in
+            lib.genAttrs pluginDirs (name: mkPlugin pkgs name "${self}/plugins/${name}");
+        };
       packages.aarch64-linux = rec {
-        cli = buildCli "x86_64-linux";
-        server = buildServer "x86_64-linux";
+        cli = mkCli "x86_64-linux";
+        server = mkServer "x86_64-linux";
         default = server;
       };
 

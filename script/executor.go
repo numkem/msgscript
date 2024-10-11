@@ -24,23 +24,25 @@ import (
 	luastrings "github.com/vadv/gopher-lua-libs/strings"
 	"github.com/vadv/gopher-lua-libs/time"
 	"github.com/yuin/gluare"
-	lua "github.com/yuin/gopher-lua"
+	"github.com/yuin/gopher-lua"
 	lfs "layeh.com/gopher-lfs"
 
 	luamodules "github.com/numkem/msgscript/lua"
+	msgplugins "github.com/numkem/msgscript/plugins"
 	msgstore "github.com/numkem/msgscript/store"
 )
 
 // ScriptExecutor defines the structure responsible for managing Lua script execution
 type ScriptExecutor struct {
-	cancelFunc context.CancelFunc   // Context cancellation function
-	ctx        context.Context      // Context for cancellation
-	nc         *nats.Conn           // Connection to NATS
-	store      msgstore.ScriptStore // Interface for the script storage backend
+	cancelFunc context.CancelFunc       // Context cancellation function
+	ctx        context.Context          // Context for cancellation
+	nc         *nats.Conn               // Connection to NATS
+	store      msgstore.ScriptStore     // Interface for the script storage backend
+	plugins    []msgplugins.PreloadFunc // Plugins to load before execution
 }
 
 // NewScriptExecutor creates a new ScriptExecutor using the provided ScriptStore
-func NewScriptExecutor(store msgstore.ScriptStore, nc *nats.Conn) *ScriptExecutor {
+func NewScriptExecutor(store msgstore.ScriptStore, plugins []msgplugins.PreloadFunc, nc *nats.Conn) *ScriptExecutor {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 
 	return &ScriptExecutor{
@@ -48,6 +50,7 @@ func NewScriptExecutor(store msgstore.ScriptStore, nc *nats.Conn) *ScriptExecuto
 		ctx:        ctx,
 		nc:         nc,
 		store:      store,
+		plugins:    plugins,
 	}
 }
 
@@ -124,6 +127,15 @@ func (se *ScriptExecutor) HandleMessage(ctx context.Context, subject string, pay
 			runtime.Preload(L)
 			luastrings.Preload(L)
 			time.Preload(L)
+
+			// Load plugins
+			if se.plugins != nil {
+				err = msgplugins.LoadPlugins(L, se.plugins)
+				if err != nil {
+					log.Errorf("failed to load plugin: %v", err)
+					return
+				}
+			}
 
 			var sb strings.Builder
 			for _, l := range libs {

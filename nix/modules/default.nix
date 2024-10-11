@@ -8,6 +8,11 @@
 with lib;
 let
   cfg = config.services.msgscript;
+
+  pluginDir = pkgs.symlinkJoin {
+    name = "msgscript-server-plugins";
+    paths = cfg.plugins;
+  };
 in
 {
   options.services.msgscript = {
@@ -27,6 +32,12 @@ in
       ];
       default = "etcd";
       description = "Backend to use to store/execute the functions from";
+    };
+
+    plugins = mkOption {
+      type = types.listOf types.package;
+      default = [ ];
+      description = "Plugins to add to the server";
     };
 
     natsUrl = mkOption {
@@ -68,7 +79,7 @@ in
         restartIfChanged = true;
 
         serviceConfig = {
-          ExecStart = "${pkgs.msgscript-server}/bin/msgscript -backend ${cfg.backend} -etcdurl ${lib.concatStringsSep "," cfg.etcdEndpoints} -natsurl ${cfg.natsUrl}";
+          ExecStart = "${pkgs.msgscript-server}/bin/msgscript -backend ${cfg.backend} -etcdurl ${lib.concatStringsSep "," cfg.etcdEndpoints} -natsurl ${cfg.natsUrl} -plugin ${pluginDir}";
 
           User = cfg.user;
           Group = cfg.group;
