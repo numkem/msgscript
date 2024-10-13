@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 
@@ -22,7 +23,7 @@ import (
 	"github.com/vadv/gopher-lua-libs/ioutil"
 	"github.com/vadv/gopher-lua-libs/runtime"
 	luastrings "github.com/vadv/gopher-lua-libs/strings"
-	"github.com/vadv/gopher-lua-libs/time"
+	luatime "github.com/vadv/gopher-lua-libs/time"
 	"github.com/yuin/gluare"
 	"github.com/yuin/gopher-lua"
 	lfs "layeh.com/gopher-lfs"
@@ -73,13 +74,26 @@ func (se *ScriptExecutor) HandleMessage(ctx context.Context, subject string, pay
 	// Loop through each scripts attached to the subject as there might be more than one
 	for name, script := range scripts {
 		wg.Add(1)
+
+		fields := log.Fields{
+			"subject": subject,
+			"path":    name,
+		}
+
+		tmp, err := os.MkdirTemp(os.TempDir(), fmt.Sprintf("msgscript-%s-%s", subject, name))
+		if err != nil {
+			log.WithFields(fields).Errorf("failed to create temp directory: %v", err)
+			return
+		}
+		defer os.RemoveAll(tmp)
+
 		// Run the Lua script in a separate goroutine to handle the message for each script
 		go func(script string) {
-			defer wg.Done()
-			fields := log.Fields{
-				"subject": subject,
-				"path":    name,
+			err := os.Chdir(tmp)
+			if err != nil {
+				log.WithFields(fields).Errorf("failed to change to temp directory %s: %v", tmp, err)
 			}
+			defer wg.Done()
 
 			// Read the script to get the headers (for the libraries for example)
 			sr := new(ScriptReader)
@@ -126,7 +140,7 @@ func (se *ScriptExecutor) HandleMessage(ctx context.Context, subject string, pay
 			luamodules.PreloadEtcd(L)
 			runtime.Preload(L)
 			luastrings.Preload(L)
-			time.Preload(L)
+			luatime.Preload(L)
 
 			// Load plugins
 			if se.plugins != nil {
