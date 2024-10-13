@@ -14,16 +14,6 @@ import (
 	_ "github.com/lib/pq"
 	"github.com/nats-io/nats.go"
 	log "github.com/sirupsen/logrus"
-	"github.com/tengattack/gluasql"
-	mysql "github.com/tengattack/gluasql/mysql"
-	sqlite3 "github.com/tengattack/gluasql/sqlite3"
-	"github.com/vadv/gopher-lua-libs/cmd"
-	"github.com/vadv/gopher-lua-libs/filepath"
-	"github.com/vadv/gopher-lua-libs/inspect"
-	"github.com/vadv/gopher-lua-libs/ioutil"
-	"github.com/vadv/gopher-lua-libs/runtime"
-	luastrings "github.com/vadv/gopher-lua-libs/strings"
-	luatime "github.com/vadv/gopher-lua-libs/time"
 	"github.com/yuin/gluare"
 	"github.com/yuin/gopher-lua"
 	lfs "layeh.com/gopher-lfs"
@@ -126,21 +116,11 @@ func (se *ScriptExecutor) HandleMessage(ctx context.Context, subject string, pay
 
 			// Set up the Lua state with the subject and payload
 			L.PreloadModule("http", gluahttp.NewHttpModule(&http.Client{}).Loader)
-			L.PreloadModule("mysql", mysql.Loader)
 			L.PreloadModule("re", gluare.Loader)
-			L.PreloadModule("sqlite3", sqlite3.Loader)
-			cmd.Preload(L)
-			filepath.Preload(L)
-			gluasql.Preload(L)
-			inspect.Preload(L)
-			ioutil.Preload(L)
 			lfs.Preload(L)
 			luajson.Preload(L)
 			luamodules.PreloadNats(L, se.nc)
 			luamodules.PreloadEtcd(L)
-			runtime.Preload(L)
-			luastrings.Preload(L)
-			luatime.Preload(L)
 
 			// Load plugins
 			if se.plugins != nil {
