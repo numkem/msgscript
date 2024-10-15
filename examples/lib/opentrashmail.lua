@@ -1,3 +1,4 @@
+--* name: opentrashmail
 local http = require("http")
 local json = require("json")
 

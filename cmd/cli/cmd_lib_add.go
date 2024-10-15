@@ -6,11 +6,11 @@ import (
 	"io/fs"
 	"os"
 	"path"
-	"strings"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
+	"github.com/numkem/msgscript/script"
 	msgstore "github.com/numkem/msgscript/store"
 )
 
@@ -25,18 +25,30 @@ func init() {
 	libCmd.AddCommand(libAddCmd)
 
 	libAddCmd.PersistentFlags().BoolP("recursive", "r", false, "Add files in path recursively")
+	libAddCmd.PersistentFlags().String("name", "n", "Name of the library")
+
+	libAddCmd.MarkFlagRequired("name")
 }
 
-func addLibraryFile(store msgstore.ScriptStore, filepath string, filename string) error {
-	fullname := path.Join(filepath, filename)
-	content, err := os.ReadFile(fullname)
+func addLibraryFile(store msgstore.ScriptStore, argName, fullname string) error {
+	r := script.ScriptReader{}
+	err := r.ReadFile(fullname)
 	if err != nil {
-		return fmt.Errorf("failed to read %s: %v", filename, err)
+		return fmt.Errorf("failed to read script: %v", err)
 	}
 
-	p := strings.Replace(strings.Replace(filename, filepath, "", 1), path.Ext(filename), "", 1)
-	log.Debugf("loading library %s", p)
-	return store.AddLibrary(context.Background(), string(content), p)
+	content, err := os.ReadFile(fullname)
+	if err != nil {
+		return fmt.Errorf("failed to read %s: %v", fullname, err)
+	}
+
+	name := r.Script.Name
+	if argName != "" {
+		name = argName
+	}
+
+	log.Debugf("loading library %s", name)
+	return store.AddLibrary(context.Background(), string(content), name)
 }
 
 func libAddRun(cmd *cobra.Command, args []string) {
@@ -64,11 +76,12 @@ func libAddRun(cmd *cobra.Command, args []string) {
 					}
 
 					if path.Ext(filename) == ".lua" {
-						err = addLibraryFile(store, arg, filename)
+						fullname := path.Join(arg, filename)
+						err = addLibraryFile(store, cmd.Flag("name").Value.String(), fullname)
 						if err != nil {
 							return fmt.Errorf("failed add library file: %v", err)
 						}
-						count++
+						count += 1
 					}
 
 					return nil
@@ -82,23 +95,24 @@ func libAddRun(cmd *cobra.Command, args []string) {
 
 				for _, e := range entries {
 					if path.Ext(e.Name()) == ".lua" {
-						err = addLibraryFile(store, arg, e.Name())
+						fullname := path.Join(arg, e.Name())
+						err = addLibraryFile(store, cmd.Flag("name").Value.String(), fullname)
 						if err != nil {
 							cmd.PrintErrf("failed add library file %s: %v", e.Name(), err)
 							return
 						}
-						count++
+						count += 1
 					}
 				}
 
 			}
 		} else {
-			err = addLibraryFile(store, "", arg)
+			err = addLibraryFile(store, cmd.Flag("name").Value.String(), arg)
 			if err != nil {
 				cmd.PrintErrf("failed add library file: %v", err)
 				return
 			}
-
+			count += 1
 		}
 	}
 
