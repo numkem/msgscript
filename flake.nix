@@ -97,11 +97,26 @@
             in
             lib.genAttrs pluginDirs (name: mkPlugin pkgs name "${self}/plugins/${name}");
         };
-      packages.aarch64-linux = rec {
-        cli = mkCli "x86_64-linux";
-        server = mkServer "x86_64-linux";
-        default = server;
-      };
+      packages.aarch64-linux =
+        let
+          pkgs = import nixpkgs { system = "aarch64-linux"; };
+          lib = pkgs.lib;
+        in
+        rec {
+          cli = mkCli "x86_64-linux";
+          server = mkServer "x86_64-linux";
+          default = server;
+
+          plugins =
+            let
+              pluginDirs = lib.remove "" (
+                lib.mapAttrsToList (name: kind: if kind == "directory" then name else "") (
+                  builtins.readDir "${self}/plugins/"
+                )
+              );
+            in
+            lib.genAttrs pluginDirs (name: mkPlugin pkgs name "${self}/plugins/${name}");
+        };
 
       devShells.x86_64-linux.default =
         let
