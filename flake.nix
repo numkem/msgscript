@@ -8,7 +8,7 @@
   outputs =
     { self, nixpkgs }:
     let
-      version = "0.1.10";
+      version = "0.2.0";
       vendorHash = "sha256-WdnaLMUPbBMjh1u2MjJ9zAeLko4PlbmhyezWvg3vzxE=";
 
       mkCli =
