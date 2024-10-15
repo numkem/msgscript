@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"os"
 	"os/signal"
@@ -81,8 +82,19 @@ func main() {
 			return
 		}
 
+		m := new(script.Message)
+		err = json.Unmarshal(msg.Data, m)
+		// if the payload isn't a JSON Message, take it as a whole
+		if err != nil {
+			log.Warn("Message received isn't in JSON format, won't have extra features")
+			m = &script.Message{
+				Payload: msg.Data,
+			}
+		}
+		m.Subject = msg.Subject
+
 		// Handle the message by invoking the corresponding Lua script
-		scriptExecutor.HandleMessage(ctx, msg.Subject, msg.Data, func(reply string) {
+		scriptExecutor.HandleMessage(ctx, m, func(reply string) {
 			// Send a reply if the message has a reply subject
 			if msg.Reply != "" {
 				nc.Publish(msg.Reply, []byte(reply))

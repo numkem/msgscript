@@ -114,7 +114,12 @@ func devCmdRun(cmd *cobra.Command, args []string) {
 
 	stopChan := make(chan struct{}, 1)
 	log.WithFields(fields).Debug("running the function")
-	scriptExecutor.HandleMessage(cmd.Context(), subject, payload, func(reply string) {
+
+	m := &script.Message{
+		Payload: payload,
+		Subject: subject,
+	}
+	scriptExecutor.HandleMessage(cmd.Context(), m, func(reply string) {
 		log.WithFields(log.Fields{"subject": subject, "payload": payload}).Debug("message replied")
 		cmd.Printf("Result: %v\n", reply)
 		stopChan <- struct{}{}
