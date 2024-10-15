@@ -60,6 +60,12 @@ func NewErrReply(err error) *Reply {
 	}
 }
 
+type NoScriptFoundError struct{}
+
+func (e *NoScriptFoundError) Error() string {
+	return "No script found for subject"
+}
+
 // ScriptExecutor defines the structure responsible for managing Lua script execution
 type ScriptExecutor struct {
 	cancelFunc context.CancelFunc       // Context cancellation function
@@ -92,9 +98,9 @@ func (se *ScriptExecutor) HandleMessage(ctx context.Context, msg *Message, reply
 	}
 
 	if len(scripts) == 0 {
-		t := fmt.Sprintf("No script found for subject: %s", msg.Subject)
-		log.Infof(t)
-		replyFunc(&Reply{Error: fmt.Errorf(t).Error()})
+		err := &NoScriptFoundError{}
+		log.WithField("subject", msg.Subject).Infof(err.Error())
+		replyFunc(&Reply{Error: err.Error()})
 		return
 	}
 

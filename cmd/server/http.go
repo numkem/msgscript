@@ -95,7 +95,12 @@ func (p *httpNatsProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if rep.Error != "" {
-		w.WriteHeader(http.StatusInternalServerError)
+		if rep.Error == (&script.NoScriptFoundError{}).Error() {
+			w.WriteHeader(http.StatusNotFound)
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+
 		_, err = w.Write([]byte("Error: " + rep.Error))
 		if err != nil {
 			log.Errorf("failed to write error to HTTP response: %v", err)
