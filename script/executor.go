@@ -30,6 +30,36 @@ type Message struct {
 	URL     string
 }
 
+type Reply struct {
+	HTML       []byte `json:"html,omitempty"`
+	Results    sync.Map
+	Error      string            `json:"error,omitempty"`
+	AllResults map[string]string `json:"results,omitempty"`
+}
+
+func (r *Reply) JSON() ([]byte, error) {
+	// Convert the sync.Map to a map
+	r.AllResults = make(map[string]string)
+	r.Results.Range(func(key, value interface{}) bool {
+		r.AllResults[key.(string)] = value.(string)
+		return true
+	})
+
+	return json.Marshal(r)
+}
+
+func NewReply() *Reply {
+	return &Reply{
+		Results: sync.Map{},
+	}
+}
+
+func NewErrReply(err error) *Reply {
+	return &Reply{
+		Error: err.Error(),
+	}
+}
+
 // ScriptExecutor defines the structure responsible for managing Lua script execution
 type ScriptExecutor struct {
 	cancelFunc context.CancelFunc       // Context cancellation function
@@ -53,7 +83,7 @@ func NewScriptExecutor(store msgstore.ScriptStore, plugins []msgplugins.PreloadF
 }
 
 // HandleMessage receives a message, matches it to a Lua script, and executes the script in a new goroutine
-func (se *ScriptExecutor) HandleMessage(ctx context.Context, msg *Message, replyFunc func(string)) {
+func (se *ScriptExecutor) HandleMessage(ctx context.Context, msg *Message, replyFunc func(r *Reply)) {
 	// Look up the Lua script for the given subject
 	scripts, err := se.store.GetScripts(ctx, msg.Subject)
 	if err != nil {
@@ -64,12 +94,12 @@ func (se *ScriptExecutor) HandleMessage(ctx context.Context, msg *Message, reply
 	if len(scripts) == 0 {
 		t := fmt.Sprintf("No script found for subject: %s", msg.Subject)
 		log.Infof(t)
-		replyFunc(t)
+		replyFunc(&Reply{Error: fmt.Errorf(t).Error()})
 		return
 	}
 
 	var wg sync.WaitGroup
-	resp := sync.Map{}
+	r := NewReply()
 	// Loop through each scripts attached to the subject as there might be more than one
 	for path, script := range scripts {
 		wg.Add(1)
@@ -134,8 +164,8 @@ func (se *ScriptExecutor) HandleMessage(ctx context.Context, msg *Message, reply
 			L.PreloadModule("re", gluare.Loader)
 			lfs.Preload(L)
 			luajson.Preload(L)
-			luamodules.PreloadNats(L, se.nc)
 			luamodules.PreloadEtcd(L)
+			luamodules.PreloadNats(L, se.nc)
 
 			// Load plugins
 			if se.plugins != nil {
@@ -156,41 +186,48 @@ func (se *ScriptExecutor) HandleMessage(ctx context.Context, msg *Message, reply
 			if err := L.DoString(sb.String()); err != nil {
 				msg := fmt.Sprintf("error parsing Lua script: %v", err)
 				log.WithFields(fields).Errorf(msg)
-				resp.Store(name, fmt.Sprintf("error: %v", err))
+				r.Results.Store(name, fmt.Sprintf("error: %v", err))
 				return
 			}
 
 			// If this is from an HTTP call, use the method as function to the entrypoint object
-			if msg.Method != "" {
+			var htmlReturn bool
+
+			gMethod := L.GetGlobal(msg.Method)
+			if msg.Method != "" && gMethod.Type().String() != "nil" {
+				htmlReturn = true
 				if err := L.CallByParam(lua.P{
-					Fn:      L.GetGlobal(msg.Method),
+					Fn:      gMethod,
 					NRet:    1,
 					Protect: true,
 				}, lua.LString(msg.URL), lua.LString(string(msg.Payload))); err != nil {
-					msg := fmt.Sprintf("failed to call %s function: %v", msg.Method, err)
-					log.WithFields(fields).Error(msg)
-					resp.Store(name, fmt.Sprintf("error: %v", err))
+					r.Error = fmt.Errorf("failed to call %s function: %v", msg.Method, err).Error()
 					return
 				}
-			} else {
+			}
+
+			gOnMessage := L.GetGlobal("OnMessage")
+			if gOnMessage.Type().String() != "nil" {
 				if err := L.CallByParam(lua.P{
-					Fn:      L.GetGlobal("OnMessage"),
+					Fn:      gOnMessage,
 					NRet:    1,
 					Protect: true,
 				}, lua.LString(msg.Subject), lua.LString(string(msg.Payload))); err != nil {
-					msg := fmt.Sprintf("failed to call OnMessage function: %v", err)
-					log.WithFields(fields).Error(msg)
-					resp.Store(name, fmt.Sprintf("error: %v", err))
+					r.Error = fmt.Errorf("failed to call OnMessage function: %v", err).Error()
 					return
 				}
 			}
 
 			// Retrieve the result from the Lua state (assuming it's a string)
 			result := L.Get(-1)
-			if str, ok := result.(lua.LString); ok {
-				resp.Store(name, string(str))
+			if val, ok := result.(lua.LString); ok {
+				if htmlReturn {
+					r.HTML = []byte(val.String())
+				} else {
+					r.Results.Store(name, val.String())
+				}
 			} else {
-				log.WithFields(fields).Warn("Script did not return a string")
+				log.WithFields(fields).Debug("Script did not return a string")
 			}
 		}(script)
 	}
@@ -198,26 +235,13 @@ func (se *ScriptExecutor) HandleMessage(ctx context.Context, msg *Message, reply
 	wg.Wait()
 	log.WithField("subject", msg.Subject).Debugf("finished running %d scripts", len(scripts))
 
-	// Return a JSON representation of the result of each function ran
-	r := make(map[string]string)
-	resp.Range(func(k, v any) bool {
-		r[k.(string)] = v.(string)
-		return true
-	})
-
 	// For non-http calls, we can return a map of all the reponses for each of the scripts
 	if msg.Method == "" {
-		j, err := json.Marshal(r)
-		if err != nil {
-			log.WithField("subject", msg.Subject).Error("failed to marshal response")
-		}
-		replyFunc(string(j))
+		replyFunc(r)
 	} else {
 		// Return the first value found
 		// TODO: Maybe append all of the answers together?
-		for _, v := range r {
-			replyFunc(v)
-		}
+		replyFunc(r)
 	}
 }
 

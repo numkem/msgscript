@@ -94,10 +94,20 @@ func main() {
 		m.Subject = msg.Subject
 
 		// Handle the message by invoking the corresponding Lua script
-		scriptExecutor.HandleMessage(ctx, m, func(reply string) {
+		scriptExecutor.HandleMessage(ctx, m, func(r *script.Reply) {
 			// Send a reply if the message has a reply subject
-			if msg.Reply != "" {
-				nc.Publish(msg.Reply, []byte(reply))
+			if msg.Reply == "" {
+				return
+			}
+
+			reply, err := r.JSON()
+			if err != nil {
+				log.Errorf("failed to serialize script reply to JSON: %v", err)
+			}
+
+			err = nc.Publish(msg.Reply, reply)
+			if err != nil {
+				log.Errorf("failed to publish reply after running script: %v", err)
 			}
 		})
 	})

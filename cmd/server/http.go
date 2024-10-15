@@ -86,21 +86,42 @@ func (p *httpNatsProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	m := new(script.Message)
-	err = json.Unmarshal(msg.Data, m)
+	rep := new(script.Reply)
+	err = json.Unmarshal(msg.Data, rep)
 	if err != nil {
-		// This means the message is "raw", it's not an actual error
-		w.WriteHeader(http.StatusOK)
-		w.Write(msg.Data)
+		w.WriteHeader(http.StatusFailedDependency)
+		w.Write([]byte(fmt.Sprintf("Error: %v", err)))
 		return
 	}
 
-	// Check if the response starts with '<html>'
-	if strings.HasPrefix(string(m.Payload), "<html>") {
-		w.Header().Add("Content-Type", "text/html")
+	if rep.Error != "" {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, err = w.Write([]byte("Error: " + rep.Error))
+		if err != nil {
+			log.Errorf("failed to write error to HTTP response: %v", err)
+		}
+
+		return
 	}
 
-	w.Write(m.Payload)
+	if rep.HTML != nil {
+		w.Header().Add("Content-Type", "text/html")
+		_, err = w.Write(rep.HTML)
+		if err != nil {
+			log.Errorf("failed to write reply back to HTTP response: %v", err)
+		}
+	} else {
+		// Convert the results to bytes
+		rr, err := json.Marshal(rep.AllResults)
+		if err != nil {
+			log.Errorf("failed to serialize all results to JSON: %v", err)
+		}
+
+		_, err = w.Write(rr)
+		if err != nil {
+			log.Errorf("failed to write reply back to HTTP response: %v", err)
+		}
+	}
 }
 
 func runHTTP(port int, natsURL string) {

@@ -119,9 +119,16 @@ func devCmdRun(cmd *cobra.Command, args []string) {
 		Payload: payload,
 		Subject: subject,
 	}
-	scriptExecutor.HandleMessage(cmd.Context(), m, func(reply string) {
-		log.WithFields(log.Fields{"subject": subject, "payload": payload}).Debug("message replied")
-		cmd.Printf("Result: %v\n", reply)
+	scriptExecutor.HandleMessage(cmd.Context(), m, func(r *script.Reply) {
+		fields := log.Fields{"subject": subject}
+		log.WithFields(fields).Debug("script replied")
+
+		j, err := r.JSON()
+		if err != nil {
+			log.WithFields(fields).Errorf("failed to Unmarshal reply: %v", err)
+		}
+
+		cmd.Printf("Result: %v\n", string(j))
 		stopChan <- struct{}{}
 	})
 
