@@ -15,11 +15,7 @@ type Script struct {
 	LibKeys []string
 }
 
-type ScriptReader struct {
-	Script *Script
-}
-
-func (s *ScriptReader) ReadFile(filename string) error {
+func (s *Script) ReadFile(filename string) error {
 	f, err := os.Open(filename)
 	if err != nil {
 		return fmt.Errorf("failed to open file %s: %v", filename, err)
@@ -33,15 +29,9 @@ func (s *ScriptReader) ReadFile(filename string) error {
 	return nil
 }
 
-func (s *ScriptReader) ReadString(str string) error {
+func (s *Script) ReadString(str string) error {
 	r := strings.NewReader(str)
-
-	err := s.Read(r)
-	if err != nil {
-		return fmt.Errorf("failed to read string buffer: %v", err)
-	}
-
-	return nil
+	return s.Read(r)
 }
 
 func getHeaderValue(line, header string) string {
@@ -52,21 +42,19 @@ func getHeaderValue(line, header string) string {
 	return ""
 }
 
-func (s *ScriptReader) Read(f io.Reader) error {
-	s.Script = new(Script)
-
+func (s *Script) Read(f io.Reader) error {
 	scanner := bufio.NewScanner(f)
 	var b strings.Builder
 	for scanner.Scan() {
 		line := scanner.Text()
 		if v := getHeaderValue(line, "--* subject: "); v != "" {
-			s.Script.Subject = v
+			s.Subject = v
 		}
 		if v := getHeaderValue(line, "--* name: "); v != "" {
-			s.Script.Name = v
+			s.Name = v
 		}
 		if v := getHeaderValue(line, "--* require: "); v != "" {
-			s.Script.LibKeys = append(s.Script.LibKeys, v)
+			s.LibKeys = append(s.LibKeys, v)
 		}
 
 		_, err := b.WriteString(line + "\n")
@@ -75,7 +63,7 @@ func (s *ScriptReader) Read(f io.Reader) error {
 		}
 	}
 
-	s.Script.Content = []byte(strings.TrimSuffix(b.String(), "\n"))
+	s.Content = []byte(strings.TrimSuffix(b.String(), "\n"))
 
 	if err := scanner.Err(); err != nil {
 		return err

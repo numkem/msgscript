@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"io/fs"
 	"os"
@@ -30,27 +29,6 @@ func init() {
 	libAddCmd.MarkFlagRequired("name")
 }
 
-func addLibraryFile(store msgstore.ScriptStore, argName, fullname string) error {
-	r := script.ScriptReader{}
-	err := r.ReadFile(fullname)
-	if err != nil {
-		return fmt.Errorf("failed to read script: %v", err)
-	}
-
-	content, err := os.ReadFile(fullname)
-	if err != nil {
-		return fmt.Errorf("failed to read %s: %v", fullname, err)
-	}
-
-	name := r.Script.Name
-	if argName != "" {
-		name = argName
-	}
-
-	log.Debugf("loading library %s", name)
-	return store.AddLibrary(context.Background(), string(content), name)
-}
-
 func libAddRun(cmd *cobra.Command, args []string) {
 	store, err := msgstore.StoreByName(cmd.Flag("backend").Value.String(), cmd.Flag("etcdurls").Value.String())
 	if err != nil {
@@ -58,63 +36,89 @@ func libAddRun(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	var count int
-	for _, arg := range args {
-		stat, err := os.Stat(arg)
+	recursive, err := cmd.Flags().GetBool("recursive")
+	if err != nil {
+		cmd.PrintErrln(fmt.Errorf("failed parse recursive flag: %v", err))
+		return
+	}
+
+	libraries, err := parseDirsForLibraries(args, recursive)
+	if err != nil {
+		cmd.PrintErrln(fmt.Errorf("failed to parse directories for librairies: %v", err))
+		return
+	}
+
+	for _, lib := range libraries {
+		err = store.AddLibrary(cmd.Context(), string(lib.Content), lib.Name)
 		if err != nil {
-			cmd.PrintErrf("failed to stat %s: %v", arg, err)
+			cmd.PrintErrln(fmt.Errorf("failed to add library %s to the store: %v", lib.Name, err))
 			return
 		}
+	}
 
-		recursive, err := cmd.Flags().GetBool("recursive")
+	cmd.Printf("Added %d libraries\n", len(libraries))
+}
+
+func parseDirsForLibraries(dirnames []string, recursive bool) ([]*script.Script, error) {
+	var scripts []*script.Script
+	for _, dir := range dirnames {
+		stat, err := os.Stat(dir)
+		if err != nil {
+			return nil, fmt.Errorf("failed to stat %s: %v", dir, err)
+		}
+
 		if stat.IsDir() {
 			if recursive {
-				fsys := os.DirFS(arg)
+				fsys := os.DirFS(dir)
 				err = fs.WalkDir(fsys, ".", func(filename string, d os.DirEntry, err error) error {
 					if err != nil {
 						return err
 					}
 
 					if path.Ext(filename) == ".lua" {
-						fullname := path.Join(arg, filename)
-						err = addLibraryFile(store, cmd.Flag("name").Value.String(), fullname)
+						s := new(script.Script)
+						fullname := path.Join(dir, filename)
+						err = s.ReadFile(fullname)
 						if err != nil {
-							return fmt.Errorf("failed add library file: %v", err)
+							return fmt.Errorf("failed to read script %s: %v", fullname, err)
 						}
-						count += 1
+
+						scripts = append(scripts, s)
 					}
 
 					return nil
 				})
 			} else {
-				entries, err := os.ReadDir(arg)
+				entries, err := os.ReadDir(dir)
 				if err != nil {
-					cmd.PrintErrf("failed to read directory: %v", err)
-					return
+					return nil, fmt.Errorf("failed to read directory: %v", err)
 				}
 
 				for _, e := range entries {
 					if path.Ext(e.Name()) == ".lua" {
-						fullname := path.Join(arg, e.Name())
-						err = addLibraryFile(store, cmd.Flag("name").Value.String(), fullname)
+						fullname := path.Join(dir, e.Name())
+
+						s := new(script.Script)
+						err = s.ReadFile(fullname)
 						if err != nil {
-							cmd.PrintErrf("failed add library file %s: %v", e.Name(), err)
-							return
+							return nil, fmt.Errorf("failed to read script %s: %v", fullname, err)
 						}
-						count += 1
+
+						scripts = append(scripts, s)
 					}
 				}
 
 			}
 		} else {
-			err = addLibraryFile(store, cmd.Flag("name").Value.String(), arg)
+			s := new(script.Script)
+			err = s.ReadFile(dir)
 			if err != nil {
-				cmd.PrintErrf("failed add library file: %v", err)
-				return
+				return nil, fmt.Errorf("failed to read file %s: %v", dir, err)
 			}
-			count += 1
+
+			scripts = append(scripts, s)
 		}
 	}
 
-	cmd.Printf("Added %d libraries\n", count)
+	return scripts, nil
 }

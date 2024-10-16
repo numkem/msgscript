@@ -15,7 +15,7 @@ import (
 var devCmd = &cobra.Command{
 	Use:   "dev",
 	Args:  validateArgIsPath,
-	Short: "Executes the script locally like how the server would do",
+	Short: "Executes the script locally like how the server would",
 	Run:   devCmdRun,
 }
 
@@ -63,32 +63,36 @@ func devCmdRun(cmd *cobra.Command, args []string) {
 	name := cmd.Flag("name").Value.String()
 
 	// Try to read the file to see if we can find headers
-	r := new(script.ScriptReader)
-	err = r.ReadFile(args[0])
+	s := new(script.Script)
+	err = s.ReadFile(args[0])
 	if err != nil {
 		log.Errorf("failed to read the script file %s: %v\n", args[0], err)
 		return
 	}
 
 	if subject == "" {
-		if r.Script.Subject == "" {
+		if s.Subject == "" {
 			cmd.PrintErrf("subject is required\n")
 			return
 		}
 
-		subject = r.Script.Subject
+		subject = s.Subject
 	}
 	if name == "" {
-		if r.Script.Name == "" {
+		if s.Name == "" {
 			cmd.PrintErrf("name is required\n")
 			return
 		}
 
-		name = r.Script.Name
+		name = s.Name
 	}
 
 	// Add the given script to the store
-	store.AddScript(cmd.Context(), subject, name, string(r.Script.Content))
+	err = store.AddScript(cmd.Context(), subject, name, string(s.Content))
+	if err != nil {
+		cmd.PrintErrf("failed to add script to store: %v\n")
+		return
+	}
 
 	payloadFlag := cmd.Flag("input").Value.String()
 	var payload []byte

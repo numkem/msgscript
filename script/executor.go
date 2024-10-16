@@ -24,10 +24,10 @@ import (
 )
 
 type Message struct {
-	Subject string
-	Payload []byte
-	Method  string
-	URL     string
+	Subject string `json:"subject"`
+	Payload []byte `json:"payload"`
+	Method  string `json:"method"`
+	URL     string `json:"url"`
 }
 
 type Reply struct {
@@ -133,14 +133,14 @@ func (se *ScriptExecutor) HandleMessage(ctx context.Context, msg *Message, reply
 			defer wg.Done()
 
 			// Read the script to get the headers (for the libraries for example)
-			sr := new(ScriptReader)
-			err = sr.ReadString(script)
+			s := new(Script)
+			err = s.ReadString(script)
 			if err != nil {
 				log.WithFields(fields).Errorf("failed to read script: %v", err)
 				return
 			}
 
-			libs, err := se.store.LoadLibrairies(ctx, sr.Script.LibKeys)
+			libs, err := se.store.LoadLibrairies(ctx, s.LibKeys)
 			if err != nil {
 				log.WithFields(fields).Errorf("failed to read librairies: %v", err)
 				return
