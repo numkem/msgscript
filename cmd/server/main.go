@@ -86,12 +86,19 @@ func main() {
 		err = json.Unmarshal(msg.Data, m)
 		// if the payload isn't a JSON Message, take it as a whole
 		if err != nil {
+			log.Errorf("failed to parse message: %v", err)
+		}
+
+		// The above unmarshalling only applies to the structure of the JSON.
+		// Even if you feed it another JSON where none of the keys matches,
+		// it will just end up being an empty struct
+		if m.Payload == nil {
 			log.Warn("Message received isn't in JSON format, won't have extra features")
 			m = &script.Message{
+				Subject: msg.Subject,
 				Payload: msg.Data,
 			}
 		}
-		m.Subject = msg.Subject
 
 		// Handle the message by invoking the corresponding Lua script
 		scriptExecutor.HandleMessage(ctx, m, func(r *script.Reply) {
