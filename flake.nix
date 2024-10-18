@@ -87,6 +87,11 @@
           server = mkServer pkgs;
           default = server;
 
+          allPlugins = pkgs.symlinkJoin {
+            name = "msgscript-all-plugins";
+            paths = lib.attrValues plugins;
+          };
+
           plugins =
             let
               pluginDirs = lib.remove "" (
@@ -106,6 +111,11 @@
           cli = mkCli "x86_64-linux";
           server = mkServer "x86_64-linux";
           default = server;
+
+          allPlugins = pkgs.symlinkJoin {
+            name = "msgscript-all-plugins";
+            paths = lib.attrValues plugins;
+          };
 
           plugins =
             let
