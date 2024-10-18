@@ -100,22 +100,12 @@ This command adds the `pushover.lua` script from the `examples` directory, assoc
 
 When writing Lua scripts for msgscript, you have access to additional modules:
 
-- `db`: SQL access to MySQL, Sqlite3 and PostgreSQL [source](https://github.com/tengattack/gluasql)
 - `etcd`: Read/Write/Update/Delete keys in etcd [source](lua/etcd.go)
 - `http`: For making HTTP requests [source](https://github.com/cjoudrey/gluahttp)
 - `json`: For JSON parsing and generation [source](https://github.com/layeh/gopher-json)
 - `lfs`: LuaFilesystem implementation [source](https://layeh.com/gopher-lfs)
 - `nats`: For publishing messages back to NATS [source](lua/nats.go)
 - `re`: Regular expression library [source](https://github.com/yuin/gluare)
-
-Various modules from the [gopher-lua-libs](https://github.com/vadv/gopher-lua-libs):
-- `cmd`
-- `filepath`
-- `inspect`
-- `ioutil`
-- `runtime`
-- `strings`
-- `time`
 
 Some examples scripts are provided in the `examples` folder.
 
@@ -124,6 +114,19 @@ Some examples scripts are provided in the `examples` folder.
 While there is already a lot of modules added to the Lua execution environment, it is possible to add more using the included plugin system.
 
 An example [plugin](plugins/hello/main.go) is available. The plugins can be loaded using the `--plugin` flag for both the server and cli.
+
+Plugins currently included in this repository:
+
+* `scrape`: An http parser [source](https://github.com/felipejfc/gluahttpscrape)
+* `db`: SQL access to MySQL, Sqlite3 and PostgreSQL [source](https://github.com/tengattack/gluasql)
+* Various modules from the [gopher-lua-libs](https://github.com/vadv/gopher-lua-libs):
+    * `cmd`
+    * `filepath`
+    * `inspect`
+    * `ioutil`
+    * `runtime`
+    * `strings`
+    * `time`
 
 ### Libraries
 

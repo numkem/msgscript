@@ -4,6 +4,7 @@ go 1.22.6
 
 require (
 	github.com/cjoudrey/gluahttp v0.0.0-20201111170219-25003d9adfa9
+	github.com/felipejfc/gluahttpscrape v0.0.0-20170525191632-10580c4a38f9
 	github.com/jedib0t/go-pretty/v6 v6.5.9
 	github.com/layeh/gopher-json v0.0.0-20201124131017-552bb3c4c3bf
 	github.com/lib/pq v1.10.9
@@ -39,6 +40,7 @@ require (
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rivo/uniseg v0.2.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
+	github.com/yhat/scrape v0.0.0-20161128144610-24b7890b0945 // indirect
 	github.com/yuin/gluamapper v0.0.0-20150323120927-d836955830e7 // indirect
 	go.etcd.io/etcd/api/v3 v3.5.15 // indirect
 	go.etcd.io/etcd/client/pkg/v3 v3.5.15 // indirect
@@ -55,4 +57,5 @@ require (
 	google.golang.org/protobuf v1.33.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
+	layeh.com/gopher-luar v1.0.11 // indirect
 )
