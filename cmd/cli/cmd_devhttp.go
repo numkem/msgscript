@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -149,6 +148,13 @@ func (p *devHttpProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	p.executor.HandleMessage(p.context, msg, func(rep *script.Reply) {
+		fields := log.Fields{
+			"subject": msg.Subject,
+			"url":     msg.URL,
+			"method":  msg.Method,
+		}
+		log.WithFields(fields).Debugf("Results: %s", string(msg.Payload))
+
 		if rep.Error != "" {
 			if rep.Error == (&script.NoScriptFoundError{}).Error() {
 				w.WriteHeader(http.StatusNotFound)
@@ -158,30 +164,24 @@ func (p *devHttpProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 			_, err = w.Write([]byte("Error: " + rep.Error))
 			if err != nil {
-				log.Errorf("failed to write error to HTTP response: %v", err)
+				log.WithFields(fields).Errorf("failed to write error to HTTP response: %v", err)
 			}
 
 			return
 		}
 
-		if rep.HTML != nil {
-			w.Header().Add("Content-Type", "text/html")
-			_, err = w.Write(rep.HTML)
-			if err != nil {
-				log.Errorf("failed to write reply back to HTTP response: %v", err)
-			}
-		} else {
-			// Convert the results to bytes
-			rr, err := json.Marshal(rep.AllResults)
-			if err != nil {
-				log.Errorf("failed to serialize all results to JSON: %v", err)
+		w.Header().Add("Content-Type", "text/html")
+		rep.Results.Range(func(key, value interface{}) bool {
+			sr := value.(*script.ScriptResult)
+			if sr.IsHTML {
+				_, err = w.Write(sr.Payload)
+				if err != nil {
+					log.WithFields(fields).Errorf("failed to write reply back to HTTP response: %v", err)
+				}
 			}
 
-			_, err = w.Write(rr)
-			if err != nil {
-				log.Errorf("failed to write reply back to HTTP response: %v", err)
-			}
-		}
+			return true
+		})
 	})
 }
 

@@ -31,17 +31,23 @@ type Message struct {
 }
 
 type Reply struct {
-	HTML       []byte `json:"html,omitempty"`
 	Results    sync.Map
-	Error      string            `json:"error,omitempty"`
-	AllResults map[string]string `json:"results,omitempty"`
+	HTML       bool                     `json:"is_html"`
+	Error      string                   `json:"error,omitempty"`
+	AllResults map[string]*ScriptResult `json:"results,omitempty"`
+}
+
+type ScriptResult struct {
+	Error   string `json:"error"`
+	Payload []byte `json:"payload"`
+	IsHTML  bool   `json:"is_html"`
 }
 
 func (r *Reply) JSON() ([]byte, error) {
 	// Convert the sync.Map to a map
-	r.AllResults = make(map[string]string)
+	r.AllResults = make(map[string]*ScriptResult)
 	r.Results.Range(func(key, value interface{}) bool {
-		r.AllResults[key.(string)] = value.(string)
+		r.AllResults[key.(string)] = value.(*ScriptResult)
 		return true
 	})
 
@@ -159,7 +165,7 @@ func (se *ScriptExecutor) HandleMessage(ctx context.Context, msg *Message, reply
 			}
 			defer se.store.ReleaseLock(ctx, name)
 
-			log.WithFields(fields).Debug("executing script")
+			log.WithFields(fields).WithField("isHTML", s.HTML).Debug("executing script")
 
 			L := lua.NewState()
 			L.SetContext(se.ctx)
@@ -189,49 +195,60 @@ func (se *ScriptExecutor) HandleMessage(ctx context.Context, msg *Message, reply
 			sb.WriteString(script)
 			log.WithFields(fields).Debugf("script:\n%+s\n\n", sb.String())
 
+			res := &ScriptResult{
+				IsHTML: s.HTML,
+			}
 			if err := L.DoString(sb.String()); err != nil {
 				msg := fmt.Sprintf("error parsing Lua script: %v", err)
 				log.WithFields(fields).Errorf(msg)
-				r.Results.Store(name, fmt.Sprintf("error: %v", err))
+				res.Error = err.Error()
+				r.Results.Store(name, res)
 				return
 			}
 
-			// If this is from an HTTP call, use the method as function to the entrypoint object
-			var htmlReturn bool
-
-			gMethod := L.GetGlobal(msg.Method)
-			if msg.Method != "" && gMethod.Type().String() != "nil" {
-				htmlReturn = true
-				if err := L.CallByParam(lua.P{
-					Fn:      gMethod,
-					NRet:    1,
-					Protect: true,
-				}, lua.LString(msg.URL), lua.LString(string(msg.Payload))); err != nil {
-					r.Error = fmt.Errorf("failed to call %s function: %v", msg.Method, err).Error()
-					return
+			// If the message is set to return HTML, we pass 2 things to the fonction named after the HTTP
+			// method received ex: POST(), GET()...
+			// The 2 things are:
+			//   - The URL part after the function name
+			//   - The body of the HTTP call
+			if s.HTML {
+				log.WithFields(fields).Debug("Running HTML based script")
+				gMethod := L.GetGlobal(msg.Method)
+				if msg.Method != "" && gMethod.Type().String() != "nil" {
+					if err := L.CallByParam(lua.P{
+						Fn:      gMethod,
+						NRet:    1,
+						Protect: true,
+					}, lua.LString(msg.URL), lua.LString(string(msg.Payload))); err != nil {
+						r.Error = fmt.Errorf("failed to call %s function: %v", msg.Method, err).Error()
+						return
+					}
 				}
-			}
-
-			gOnMessage := L.GetGlobal("OnMessage")
-			if gOnMessage.Type().String() != "nil" {
-				if err := L.CallByParam(lua.P{
-					Fn:      gOnMessage,
-					NRet:    1,
-					Protect: true,
-				}, lua.LString(msg.Subject), lua.LString(string(msg.Payload))); err != nil {
-					r.Error = fmt.Errorf("failed to call OnMessage function: %v", err).Error()
-					return
+			} else {
+				// If we do not have an HTML based message, we call the function named
+				// OnMessage() with 2 parameters:
+				//   - The subject
+				//   - The body of the message
+				log.WithFields(fields).Debug("Running standard script")
+				gOnMessage := L.GetGlobal("OnMessage")
+				if gOnMessage.Type().String() != "nil" {
+					if err := L.CallByParam(lua.P{
+						Fn:      gOnMessage,
+						NRet:    1,
+						Protect: true,
+					}, lua.LString(msg.Subject), lua.LString(string(msg.Payload))); err != nil {
+						r.Error = fmt.Errorf("failed to call OnMessage function: %v", err).Error()
+						return
+					}
 				}
 			}
 
 			// Retrieve the result from the Lua state (assuming it's a string)
 			result := L.Get(-1)
 			if val, ok := result.(lua.LString); ok {
-				if htmlReturn {
-					r.HTML = []byte(val.String())
-				} else {
-					r.Results.Store(name, val.String())
-				}
+				res.Payload = []byte(val.String())
+				r.Results.Store(name, res)
+				log.WithFields(fields).Debugf("Script output: \n%s\n", string(res.Payload))
 			} else {
 				log.WithFields(fields).Debug("Script did not return a string")
 			}
@@ -241,7 +258,6 @@ func (se *ScriptExecutor) HandleMessage(ctx context.Context, msg *Message, reply
 	wg.Wait()
 	log.WithField("subject", msg.Subject).Debugf("finished running %d scripts", len(scripts))
 
-	// For non-http calls, we can return a map of all the reponses for each of the scripts
 	if msg.Method == "" {
 		replyFunc(r)
 	} else {

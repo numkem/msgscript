@@ -12,18 +12,11 @@ import (
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/net/context"
 
+	"github.com/numkem/msgscript"
 	msgplugin "github.com/numkem/msgscript/plugins"
 	"github.com/numkem/msgscript/script"
 	msgstore "github.com/numkem/msgscript/store"
 )
-
-func natsUrlByEnv() string {
-	if url := os.Getenv("NATS_URL"); url != "" {
-		return url
-	} else {
-		return nats.DefaultURL
-	}
-}
 
 func main() {
 	// Parse command-line flags
@@ -50,7 +43,7 @@ func main() {
 
 	// Connect to NATS
 	if *natsURL == "" {
-		*natsURL = natsUrlByEnv()
+		*natsURL = msgscript.NatsUrlByEnv()
 	}
 	nc, err := nats.Connect(*natsURL)
 	if err != nil {

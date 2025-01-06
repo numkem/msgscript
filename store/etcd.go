@@ -33,11 +33,12 @@ func EtcdClient(endpoints string) (*clientv3.Client, error) {
 	}
 
 	// HACK: instead of using a global or carry over the variable everywhere,
-	// we set the environment variable if it's not defined so on subsequent calls
-	// it will override whatever value is set
-	err := os.Setenv("ETCD_ENDPOINTS", endpoints)
-	if err != nil {
-		return nil, fmt.Errorf("failed to set ETCD_ENDPOINTS environment variable")
+	// we set the environment variable if it's not defined
+	if os.Getenv("ETCD_ENDPOINTS") == "" {
+		err := os.Setenv("ETCD_ENDPOINTS", endpoints)
+		if err != nil {
+			return nil, fmt.Errorf("failed to set ETCD_ENDPOINTS environment variable")
+		}
 	}
 
 	return clientv3.New(clientv3.Config{

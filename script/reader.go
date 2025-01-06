@@ -11,6 +11,7 @@ import (
 type Script struct {
 	Name    string
 	Subject string
+	HTML    bool
 	Content []byte
 	LibKeys []string
 }
@@ -55,6 +56,9 @@ func (s *Script) Read(f io.Reader) error {
 		}
 		if v := getHeaderValue(line, "--* require: "); v != "" {
 			s.LibKeys = append(s.LibKeys, v)
+		}
+		if v := getHeaderValue(line, "--* html:"); v != "" {
+			s.HTML = true
 		}
 
 		_, err := b.WriteString(line + "\n")

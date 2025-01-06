@@ -9,9 +9,11 @@ import (
 	"time"
 
 	"github.com/nats-io/nats.go"
-	"github.com/numkem/msgscript/script"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/net/context"
+
+	"github.com/numkem/msgscript"
+	"github.com/numkem/msgscript/script"
 )
 
 const DEFAULT_HTTP_PORT = 7643
@@ -24,7 +26,7 @@ type httpNatsProxy struct {
 func NewHttpNatsProxy(port int, natsURL string) (*httpNatsProxy, error) {
 	// Connect to NATS
 	if natsURL == "" {
-		natsURL = natsUrlByEnv()
+		natsURL = msgscript.NatsUrlByEnv()
 	}
 	nc, err := nats.Connect(natsURL)
 	if err != nil {
@@ -109,24 +111,38 @@ func (p *httpNatsProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if rep.HTML != nil {
+	// Go through all the scripts to see if one is HTML
+	if t, sr := hasHTMLResult(rep.AllResults); t {
 		w.Header().Add("Content-Type", "text/html")
-		_, err = w.Write(rep.HTML)
+		_, err = w.Write(sr.Payload)
 		if err != nil {
 			log.Errorf("failed to write reply back to HTTP response: %v", err)
-		}
-	} else {
-		// Convert the results to bytes
-		rr, err := json.Marshal(rep.AllResults)
-		if err != nil {
-			log.Errorf("failed to serialize all results to JSON: %v", err)
 		}
 
-		_, err = w.Write(rr)
-		if err != nil {
-			log.Errorf("failed to write reply back to HTTP response: %v", err)
+		// Since only the HTML page reply can "win" we ignore the rest
+		return
+	}
+
+	// Convert the results to bytes
+	rr, err := json.Marshal(rep.AllResults)
+	if err != nil {
+		log.Errorf("failed to serialize all results to JSON: %v", err)
+	}
+
+	_, err = w.Write(rr)
+	if err != nil {
+		log.Errorf("failed to write reply back to HTTP response: %v", err)
+	}
+}
+
+func hasHTMLResult(results map[string]*script.ScriptResult) (bool, *script.ScriptResult) {
+	for _, sr := range results {
+		if sr.IsHTML {
+			return true, sr
 		}
 	}
+
+	return false, nil
 }
 
 func runHTTP(port int, natsURL string) {
