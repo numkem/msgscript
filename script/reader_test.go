@@ -18,11 +18,11 @@ end`
 
 	r := strings.NewReader(header)
 
-	reader := new(ScriptReader)
-	err := reader.Read(r)
+	s := new(Script)
+	err := s.Read(r)
 	assert.Nil(t, err)
 
-	assert.Equal(t, "pushover", reader.Script.Name)
-	assert.Equal(t, "funcs.pushover", reader.Script.Subject)
-	assert.Equal(t, header, string(reader.Script.Content))
+	assert.Equal(t, "pushover", s.Name)
+	assert.Equal(t, "funcs.pushover", s.Subject)
+	assert.Equal(t, header, string(s.Content))
 }
