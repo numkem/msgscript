@@ -8,6 +8,8 @@ import (
 	"strings"
 )
 
+const HEADER_PATTERN = "--*"
+
 type Script struct {
 	Name    string
 	Subject string
@@ -27,6 +29,10 @@ func (s *Script) ReadFile(filename string) error {
 		return fmt.Errorf("failed to read file %s: %v", filename, err)
 	}
 
+	if s.Name == "" {
+		return fmt.Errorf("script requires to have the 'name' header")
+	}
+
 	return nil
 }
 
@@ -43,21 +49,25 @@ func getHeaderValue(line, header string) string {
 	return ""
 }
 
+func headerKey(key string) string {
+	return fmt.Sprintf("%s %s: ", HEADER_PATTERN, key)
+}
+
 func (s *Script) Read(f io.Reader) error {
 	scanner := bufio.NewScanner(f)
 	var b strings.Builder
 	for scanner.Scan() {
 		line := scanner.Text()
-		if v := getHeaderValue(line, "--* subject: "); v != "" {
+		if v := getHeaderValue(line, headerKey("subject")); v != "" {
 			s.Subject = v
 		}
-		if v := getHeaderValue(line, "--* name: "); v != "" {
+		if v := getHeaderValue(line, headerKey("name")); v != "" {
 			s.Name = v
 		}
-		if v := getHeaderValue(line, "--* require: "); v != "" {
+		if v := getHeaderValue(line, headerKey("require")); v != "" {
 			s.LibKeys = append(s.LibKeys, v)
 		}
-		if v := getHeaderValue(line, "--* html:"); v != "" {
+		if v := getHeaderValue(line, headerKey("html")); v != "" {
 			s.HTML = true
 		}
 
