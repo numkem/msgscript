@@ -62,13 +62,19 @@ func devHttpCmdRun(cmd *cobra.Command, args []string) {
 		return
 	}
 
+	fullLibraryDir, err := filepath.Abs(cmd.Flag("library").Value.String())
+	if err != nil {
+		cmd.PrintErrf("failed to get absolute path for library folder: %v", err)
+		return
+	}
+
 	go func() {
 		proxy := &devHttpProxy{
 			store:      store,
 			executor:   scriptExecutor,
 			context:    ctx,
 			scriptFile: fullpath,
-			libraryDir: cmd.Flag("library").Value.String(),
+			libraryDir: fullLibraryDir,
 		}
 
 		log.Infof("Starting HTTP server on port %d", DEVHTTP_SERVER_PORT)
@@ -142,7 +148,7 @@ func (p *devHttpProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Add only the currently worked on file
 	p.store.AddScript(p.context, s.Subject, s.Name, string(s.Content))
 
-	// Remove the script at the end of processing to be sure we load a fresh version every time
+	// Create a new empty store at the end of each request
 	defer emptyStore(p.store, p.libraryDir)
 
 	url := strings.Replace(r.URL.String(), "/"+subject, "", -1)
