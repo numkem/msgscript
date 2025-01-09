@@ -38,9 +38,11 @@ type Reply struct {
 }
 
 type ScriptResult struct {
-	Error   string `json:"error"`
-	Payload []byte `json:"payload"`
-	IsHTML  bool   `json:"is_html"`
+	Code    int               `json:"http_code"`
+	Error   string            `json:"error"`
+	Headers map[string]string `json:"http_headers"`
+	IsHTML  bool              `json:"is_html"`
+	Payload []byte            `json:"payload"`
 }
 
 func (r *Reply) JSON() ([]byte, error) {
@@ -196,7 +198,8 @@ func (se *ScriptExecutor) HandleMessage(ctx context.Context, msg *Message, reply
 			log.WithFields(fields).Debugf("script:\n%+s\n\n", sb.String())
 
 			res := &ScriptResult{
-				IsHTML: s.HTML,
+				IsHTML:  s.HTML,
+				Headers: make(map[string]string),
 			}
 			if err := L.DoString(sb.String()); err != nil {
 				msg := fmt.Sprintf("error parsing Lua script: %v", err)
@@ -217,7 +220,7 @@ func (se *ScriptExecutor) HandleMessage(ctx context.Context, msg *Message, reply
 				if msg.Method != "" && gMethod.Type().String() != "nil" {
 					if err := L.CallByParam(lua.P{
 						Fn:      gMethod,
-						NRet:    1,
+						NRet:    3,
 						Protect: true,
 					}, lua.LString(msg.URL), lua.LString(string(msg.Payload))); err != nil {
 						r.Error = fmt.Errorf("failed to call %s function: %v", msg.Method, err).Error()
@@ -244,13 +247,39 @@ func (se *ScriptExecutor) HandleMessage(ctx context.Context, msg *Message, reply
 			}
 
 			// Retrieve the result from the Lua state (assuming it's a string)
-			result := L.Get(-1)
-			if val, ok := result.(lua.LString); ok {
-				res.Payload = []byte(val.String())
+			if s.HTML {
+				// Expected return value from lua would look like this (super minimal):
+				// return "<html></html>", 200, {}
+				// Only the first parameter is really necessary, the others are optional.
+				// If they are not defined, they will be set to default values:
+				// Return code will be a 200 (HTTP OK)
+				// Headers will be empty ({})
+				res.Payload = []byte(lua.LVAsString(L.Get(1)))
+				res.Code = int(lua.LVAsNumber(L.Get(2)))
+
+				if res.Code == 0 {
+					res.Code = http.StatusOK
+				}
+
+				lheaders := L.Get(3)
+				if ltable, ok := lheaders.(*lua.LTable); ok {
+					if ltable != nil {
+						ltable.ForEach(func(k, v lua.LValue) {
+							res.Headers[lua.LVAsString(k)] = lua.LVAsString(v)
+						})
+					}
+				}
+
 				r.Results.Store(name, res)
-				log.WithFields(fields).Debugf("Script output: \n%s\n", string(res.Payload))
 			} else {
-				log.WithFields(fields).Debug("Script did not return a string")
+				result := L.Get(-1)
+				if val, ok := result.(lua.LString); ok {
+					res.Payload = []byte(val.String())
+					r.Results.Store(name, res)
+					log.WithFields(fields).Debugf("Script output: \n%s\n", string(res.Payload))
+				} else {
+					log.WithFields(fields).Debug("Script did not return a string")
+				}
 			}
 		}(script)
 	}

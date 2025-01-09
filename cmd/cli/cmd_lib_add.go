@@ -61,15 +61,15 @@ func libAddRun(cmd *cobra.Command, args []string) {
 
 func parseDirsForLibraries(dirnames []string, recursive bool) ([]*script.Script, error) {
 	var scripts []*script.Script
-	for _, dir := range dirnames {
-		stat, err := os.Stat(dir)
+	for _, fname := range dirnames {
+		stat, err := os.Stat(fname)
 		if err != nil {
-			return nil, fmt.Errorf("failed to stat %s: %v", dir, err)
+			return nil, fmt.Errorf("failed to stat %s: %v", fname, err)
 		}
 
 		if stat.IsDir() {
 			if recursive {
-				fsys := os.DirFS(dir)
+				fsys := os.DirFS(fname)
 				err = fs.WalkDir(fsys, ".", func(filename string, d os.DirEntry, err error) error {
 					if err != nil {
 						return err
@@ -77,7 +77,7 @@ func parseDirsForLibraries(dirnames []string, recursive bool) ([]*script.Script,
 
 					if path.Ext(filename) == ".lua" {
 						s := new(script.Script)
-						fullname := path.Join(dir, filename)
+						fullname := path.Join(fname, filename)
 						err = s.ReadFile(fullname)
 						if err != nil {
 							return fmt.Errorf("failed to read script %s: %v", fullname, err)
@@ -89,14 +89,14 @@ func parseDirsForLibraries(dirnames []string, recursive bool) ([]*script.Script,
 					return nil
 				})
 			} else {
-				entries, err := os.ReadDir(dir)
+				entries, err := os.ReadDir(fname)
 				if err != nil {
 					return nil, fmt.Errorf("failed to read directory: %v", err)
 				}
 
 				for _, e := range entries {
 					if path.Ext(e.Name()) == ".lua" {
-						fullname := path.Join(dir, e.Name())
+						fullname := path.Join(fname, e.Name())
 
 						s := new(script.Script)
 						err = s.ReadFile(fullname)
@@ -111,9 +111,13 @@ func parseDirsForLibraries(dirnames []string, recursive bool) ([]*script.Script,
 			}
 		} else {
 			s := new(script.Script)
-			err = s.ReadFile(dir)
+			err = s.ReadFile(fname)
 			if err != nil {
-				return nil, fmt.Errorf("failed to read file %s: %v", dir, err)
+				return nil, fmt.Errorf("failed to read file %s: %v", fname, err)
+			}
+
+			if s.Name == "" {
+				return nil, fmt.Errorf("script at %s requires to have the 'name' header", fname)
 			}
 
 			scripts = append(scripts, s)

@@ -113,7 +113,19 @@ func (p *httpNatsProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Go through all the scripts to see if one is HTML
 	if t, sr := hasHTMLResult(rep.AllResults); t {
-		w.Header().Add("Content-Type", "text/html")
+		w.WriteHeader(sr.Code)
+
+		var hasContentType bool
+		for k, v := range sr.Headers {
+			if k == "Content-Type" {
+				hasContentType = true
+			}
+			w.Header().Add(k, v)
+		}
+		if !hasContentType {
+			w.Header().Add("Content-Type", "text/html")
+		}
+
 		_, err = w.Write(sr.Payload)
 		if err != nil {
 			log.Errorf("failed to write reply back to HTTP response: %v", err)

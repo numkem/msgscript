@@ -128,6 +128,13 @@ func (p *devHttpProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// TODO: load/delete libraries
 	libs, err := parseDirsForLibraries([]string{p.libraryDir}, true)
+	if err != nil {
+		e := fmt.Errorf("failed to read librairies: %v", err)
+		log.Errorf(e.Error())
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(e.Error()))
+		return
+	}
 	for _, lib := range libs {
 		p.store.AddLibrary(r.Context(), string(lib.Content), lib.Name)
 	}
@@ -139,7 +146,11 @@ func (p *devHttpProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer emptyStore(p.store, p.libraryDir)
 
 	url := strings.Replace(r.URL.String(), "/"+subject, "", -1)
+	if url == "" {
+		url = "/"
+	}
 	log.Infof("URL: %s", url)
+
 	msg := &script.Message{
 		Payload: payload,
 		Method:  r.Method,
@@ -170,10 +181,22 @@ func (p *devHttpProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		w.Header().Add("Content-Type", "text/html")
 		rep.Results.Range(func(key, value interface{}) bool {
 			sr := value.(*script.ScriptResult)
 			if sr.IsHTML {
+				w.WriteHeader(sr.Code)
+
+				var hasContentType bool
+				for k, v := range sr.Headers {
+					if k == "Content-Type" {
+						hasContentType = true
+					}
+					w.Header().Add(k, v)
+				}
+				if !hasContentType {
+					w.Header().Add("Content-Type", "text/html")
+				}
+
 				_, err = w.Write(sr.Payload)
 				if err != nil {
 					log.WithFields(fields).Errorf("failed to write reply back to HTTP response: %v", err)
@@ -182,6 +205,7 @@ func (p *devHttpProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 			return true
 		})
+
 	})
 }
 
