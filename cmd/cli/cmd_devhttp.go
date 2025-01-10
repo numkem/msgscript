@@ -190,8 +190,6 @@ func (p *devHttpProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		rep.Results.Range(func(key, value interface{}) bool {
 			sr := value.(*script.ScriptResult)
 			if sr.IsHTML {
-				w.WriteHeader(sr.Code)
-
 				var hasContentType bool
 				for k, v := range sr.Headers {
 					if k == "Content-Type" {
@@ -202,6 +200,7 @@ func (p *devHttpProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				if !hasContentType {
 					w.Header().Add("Content-Type", "text/html")
 				}
+				w.WriteHeader(sr.Code)
 
 				_, err = w.Write(sr.Payload)
 				if err != nil {
