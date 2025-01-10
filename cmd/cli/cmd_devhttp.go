@@ -136,7 +136,7 @@ func (p *devHttpProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	libs, err := parseDirsForLibraries([]string{p.libraryDir}, true)
 	if err != nil {
 		e := fmt.Errorf("failed to read librairies: %v", err)
-		log.Errorf(e.Error())
+		log.Error(e.Error())
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(e.Error()))
 		return
