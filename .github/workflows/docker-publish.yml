@@ -6,14 +6,12 @@ name: Docker
 # documentation.
 
 on:
-  schedule:
-    - cron: '42 1 * * *'
   push:
-    branches: [ "master" ]
+    branches: ["master"]
     # Publish semver tags as releases.
-    tags: [ 'v*.*.*' ]
+    tags: ["v*.*.*"]
   pull_request:
-    branches: [ "master" ]
+    branches: ["master"]
 
 env:
   # Use docker.io for Docker Hub if empty
@@ -21,10 +19,8 @@ env:
   # github.repository as <account>/<repo>
   IMAGE_NAME: ${{ github.repository }}
 
-
 jobs:
   build:
-
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -43,7 +39,7 @@ jobs:
         if: github.event_name != 'pull_request'
         uses: sigstore/cosign-installer@59acb6260d9c0ba8f4a2f9d9b48431a222b68e20 #v3.5.0
         with:
-          cosign-release: 'v2.2.4'
+          cosign-release: "v2.2.4"
 
       # Set up BuildKit Docker container builder to be able to build
       # multi-platform images and export cache
