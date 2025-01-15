@@ -74,11 +74,11 @@ func (e *EtcdScriptStore) getKey(subject, name string) string {
 }
 
 // AddScript adds a new Lua script under the given subject with a unique ID
-func (e *EtcdScriptStore) AddScript(ctx context.Context, subject, name, script string) error {
+func (e *EtcdScriptStore) AddScript(ctx context.Context, subject, name string, script []byte) error {
 	key := e.getKey(subject, name)
 
 	// Store script in etcd
-	_, err := e.client.Put(ctx, key, script)
+	_, err := e.client.Put(ctx, key, string(script))
 	if err != nil {
 		return fmt.Errorf("failed to add script for subject '%s': %v", subject, err)
 	}
@@ -88,7 +88,7 @@ func (e *EtcdScriptStore) AddScript(ctx context.Context, subject, name, script s
 }
 
 // GetScripts retrieves all scripts associated with a subject
-func (e *EtcdScriptStore) GetScripts(ctx context.Context, subject string) (map[string]string, error) {
+func (e *EtcdScriptStore) GetScripts(ctx context.Context, subject string) (map[string][]byte, error) {
 	keyPrefix := strings.Join([]string{e.prefix, subject}, "/")
 
 	// Fetch all scripts under the subject's prefix
@@ -97,9 +97,9 @@ func (e *EtcdScriptStore) GetScripts(ctx context.Context, subject string) (map[s
 		return nil, fmt.Errorf("failed to get scripts for subject '%s': %v", subject, err)
 	}
 
-	scripts := make(map[string]string)
+	scripts := make(map[string][]byte)
 	for _, kv := range resp.Kvs {
-		scripts[string(kv.Key)] = string(kv.Value)
+		scripts[string(kv.Key)] = kv.Value
 	}
 
 	log.Debugf("Retrieved %d scripts for subject %s", len(scripts), subject)
@@ -121,7 +121,7 @@ func (e *EtcdScriptStore) DeleteScript(ctx context.Context, subject, name string
 }
 
 // WatchScripts watches for changes to scripts for a specific subject
-func (e *EtcdScriptStore) WatchScripts(ctx context.Context, subject string, onChange func(subject, name, script string, deleted bool)) {
+func (e *EtcdScriptStore) WatchScripts(ctx context.Context, subject string, onChange func(subject, name string, script []byte, deleted bool)) {
 	keyPrefix := fmt.Sprintf("%s/%s/", e.prefix, subject)
 
 	watchChan := e.client.Watch(ctx, keyPrefix, clientv3.WithPrefix())
@@ -131,12 +131,11 @@ func (e *EtcdScriptStore) WatchScripts(ctx context.Context, subject string, onCh
 			name := string(ev.Kv.Key[len(keyPrefix):])
 			switch ev.Type {
 			case clientv3.EventTypePut:
-				script := string(ev.Kv.Value)
 				log.Debugf("Script added/updated for subject: %s, ID: %s", subject, name)
-				onChange(subject, name, script, false)
+				onChange(subject, name, ev.Kv.Value, false)
 			case clientv3.EventTypeDelete:
 				log.Debugf("Script deleted for subject: %s, ID: %s", subject, name)
-				onChange(subject, name, "", true)
+				onChange(subject, name, nil, true)
 			}
 		}
 	}
@@ -238,8 +237,8 @@ func (e *EtcdScriptStore) ListSubjects(ctx context.Context) ([]string, error) {
 	return subjects, nil
 }
 
-func (e *EtcdScriptStore) LoadLibrairies(ctx context.Context, libraryPaths []string) ([]string, error) {
-	var libraries []string
+func (e *EtcdScriptStore) LoadLibrairies(ctx context.Context, libraryPaths []string) ([][]byte, error) {
+	var libraries [][]byte
 	for _, path := range libraryPaths {
 		key := strings.Join([]string{ETCD_LIBRARY_KEY_PREFIX, path}, "/")
 
@@ -252,15 +251,15 @@ func (e *EtcdScriptStore) LoadLibrairies(ctx context.Context, libraryPaths []str
 			return nil, fmt.Errorf("key %s doesn't exists", key)
 		}
 
-		libraries = append(libraries, string(resp.Kvs[0].Value))
+		libraries = append(libraries, resp.Kvs[0].Value)
 	}
 
 	return libraries, nil
 }
 
-func (e *EtcdScriptStore) AddLibrary(ctx context.Context, content string, path string) error {
+func (e *EtcdScriptStore) AddLibrary(ctx context.Context, content []byte, path string) error {
 	key := strings.Join([]string{ETCD_LIBRARY_KEY_PREFIX, path}, "/")
-	_, err := e.client.Put(ctx, key, content)
+	_, err := e.client.Put(ctx, key, string(content))
 	if err != nil {
 		return fmt.Errorf("failed to store library key %s: %v", key, err)
 	}

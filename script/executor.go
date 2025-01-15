@@ -15,9 +15,10 @@ import (
 	"github.com/nats-io/nats.go"
 	log "github.com/sirupsen/logrus"
 	"github.com/yuin/gluare"
-	"github.com/yuin/gopher-lua"
+	lua "github.com/yuin/gopher-lua"
 	lfs "layeh.com/gopher-lfs"
 
+	"github.com/numkem/msgscript"
 	luamodules "github.com/numkem/msgscript/lua"
 	msgplugins "github.com/numkem/msgscript/plugins"
 	msgstore "github.com/numkem/msgscript/store"
@@ -105,7 +106,7 @@ func (se *ScriptExecutor) HandleMessage(ctx context.Context, msg *Message, reply
 		return
 	}
 
-	if len(scripts) == 0 {
+	if scripts == nil {
 		err := &NoScriptFoundError{}
 		log.WithField("subject", msg.Subject).Infof(err.Error())
 		replyFunc(&Reply{Error: err.Error()})
@@ -133,7 +134,7 @@ func (se *ScriptExecutor) HandleMessage(ctx context.Context, msg *Message, reply
 		defer os.RemoveAll(tmp)
 
 		// Run the Lua script in a separate goroutine to handle the message for each script
-		go func(script string) {
+		go func(content []byte) {
 			err := os.Chdir(tmp)
 			if err != nil {
 				log.WithFields(fields).Errorf("failed to change to temp directory %s: %v", tmp, err)
@@ -141,8 +142,7 @@ func (se *ScriptExecutor) HandleMessage(ctx context.Context, msg *Message, reply
 			defer wg.Done()
 
 			// Read the script to get the headers (for the libraries for example)
-			s := new(Script)
-			err = s.ReadString(script)
+			s, err := msgscript.ReadString(string(content))
 			if err != nil {
 				log.WithFields(fields).Errorf("failed to read script: %v", err)
 				return
@@ -192,9 +192,10 @@ func (se *ScriptExecutor) HandleMessage(ctx context.Context, msg *Message, reply
 
 			var sb strings.Builder
 			for _, l := range libs {
-				sb.WriteString(l + "\n")
+				sb.Write(l)
+				sb.WriteString("\n")
 			}
-			sb.WriteString(script)
+			sb.Write(content)
 			log.WithFields(fields).Debugf("script:\n%+s\n\n", sb.String())
 
 			res := &ScriptResult{

@@ -22,7 +22,7 @@ func init() {
 }
 
 func rmCmdRun(cmd *cobra.Command, args []string) {
-	scriptStore, err := msgstore.StoreByName(cmd.Flag("backend").Value.String(), cmd.Flag("etcdurls").Value.String())
+	scriptStore, err := msgstore.StoreByName(cmd.Flag("backend").Value.String(), cmd.Flag("etcdurls").Value.String(), "", "")
 	if err != nil {
 		cmd.PrintErrf("failed to get script store: %v", err)
 		return

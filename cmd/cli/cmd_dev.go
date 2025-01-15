@@ -7,6 +7,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
+	"github.com/numkem/msgscript"
 	msgplugin "github.com/numkem/msgscript/plugins"
 	"github.com/numkem/msgscript/script"
 	msgstore "github.com/numkem/msgscript/store"
@@ -63,8 +64,7 @@ func devCmdRun(cmd *cobra.Command, args []string) {
 	name := cmd.Flag("name").Value.String()
 
 	// Try to read the file to see if we can find headers
-	s := new(script.Script)
-	err = s.ReadFile(args[0])
+	s, err := msgscript.ReadFile(args[0])
 	if err != nil {
 		log.Errorf("failed to read the script file %s: %v\n", args[0], err)
 		return
@@ -88,7 +88,7 @@ func devCmdRun(cmd *cobra.Command, args []string) {
 	}
 
 	// Add the given script to the store
-	err = store.AddScript(cmd.Context(), subject, name, string(s.Content))
+	err = store.AddScript(cmd.Context(), subject, name, s.Content)
 	if err != nil {
 		cmd.PrintErrf("failed to add script to store: %v\n")
 		return

@@ -16,14 +16,14 @@ type DevStore struct {
 	// First: subject
 	// Second: name
 	// Value: content
-	scripts   map[string]map[string]string
-	libraries map[string]string
+	scripts   map[string]map[string][]byte
+	libraries map[string][]byte
 }
 
 func NewDevStore(libraryPath string) (ScriptStore, error) {
 	store := &DevStore{
-		scripts:   make(map[string]map[string]string),
-		libraries: make(map[string]string),
+		scripts:   make(map[string]map[string][]byte),
+		libraries: make(map[string][]byte),
 	}
 
 	if libraryPath != "" {
@@ -50,7 +50,7 @@ func NewDevStore(libraryPath string) (ScriptStore, error) {
 
 				p := strings.Replace(strings.Replace(filename, libraryPath, "", 1), path.Ext(filename), "", 1)
 				log.Debugf("loading library %s", p)
-				store.AddLibrary(context.Background(), string(content), p)
+				store.AddLibrary(context.Background(), content, p)
 			}
 
 			return nil
@@ -63,10 +63,10 @@ func NewDevStore(libraryPath string) (ScriptStore, error) {
 	return store, nil
 }
 
-func (s *DevStore) onChange(subject, name, script string, del bool) {
+func (s *DevStore) onChange(subject, name string, script []byte, del bool) {
 	if !del {
 		if _, found := s.scripts[subject]; !found {
-			s.scripts[subject] = make(map[string]string)
+			s.scripts[subject] = make(map[string][]byte)
 		}
 
 		s.scripts[subject][name] = script
@@ -77,23 +77,23 @@ func (s *DevStore) onChange(subject, name, script string, del bool) {
 	return
 }
 
-func (s *DevStore) WatchScripts(ctx context.Context, subject string, onChange func(subject, name, script string, delete bool)) {
-	onChange(subject, "", "", false)
+func (s *DevStore) WatchScripts(ctx context.Context, subject string, onChange func(subject, name string, script []byte, delete bool)) {
+	onChange(subject, "", nil, false)
 }
 
-func (s *DevStore) AddScript(ctx context.Context, subject, name, script string) error {
+func (s *DevStore) AddScript(ctx context.Context, subject, name string, script []byte) error {
 	s.onChange(subject, name, script, false)
 
 	return nil
 }
 
 func (s *DevStore) DeleteScript(ctx context.Context, subject, name string) error {
-	s.onChange(subject, name, "", true)
+	s.onChange(subject, name, nil, true)
 
 	return nil
 }
 
-func (s *DevStore) GetScripts(ctx context.Context, subject string) (map[string]string, error) {
+func (s *DevStore) GetScripts(ctx context.Context, subject string) (map[string][]byte, error) {
 	return s.scripts[subject], nil
 }
 
@@ -115,8 +115,8 @@ func (s *DevStore) ListSubjects(ctx context.Context) ([]string, error) {
 	return subjects, nil
 }
 
-func (s *DevStore) LoadLibrairies(ctx context.Context, libraryPaths []string) ([]string, error) {
-	var libraries []string
+func (s *DevStore) LoadLibrairies(ctx context.Context, libraryPaths []string) ([][]byte, error) {
+	var libraries [][]byte
 	for _, path := range libraryPaths {
 		if l, found := s.libraries[path]; found {
 			libraries = append(libraries, l)
@@ -126,7 +126,7 @@ func (s *DevStore) LoadLibrairies(ctx context.Context, libraryPaths []string) ([
 	return libraries, nil
 }
 
-func (s *DevStore) AddLibrary(ctx context.Context, content string, path string) error {
+func (s *DevStore) AddLibrary(ctx context.Context, content []byte, path string) error {
 	s.libraries[path] = content
 
 	return nil

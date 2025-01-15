@@ -14,6 +14,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
+	"github.com/numkem/msgscript"
 	msgplugin "github.com/numkem/msgscript/plugins"
 	"github.com/numkem/msgscript/script"
 	"github.com/numkem/msgscript/store"
@@ -125,8 +126,7 @@ func (p *devHttpProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Load script from disk
-	s := new(script.Script)
-	err = s.ReadFile(p.scriptFile)
+	s, err := msgscript.ReadFile(p.scriptFile)
 	if err != nil {
 		log.WithField("filename", p.scriptFile).Errorf("failed to read file: %v", err)
 		return
@@ -142,11 +142,11 @@ func (p *devHttpProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for _, lib := range libs {
-		p.store.AddLibrary(r.Context(), string(lib.Content), lib.Name)
+		p.store.AddLibrary(r.Context(), lib.Content, lib.Name)
 	}
 
 	// Add only the currently worked on file
-	p.store.AddScript(p.context, s.Subject, s.Name, string(s.Content))
+	p.store.AddScript(p.context, s.Subject, s.Name, s.Content)
 
 	// Create a new empty store at the end of each request
 	defer emptyStore(p.store, p.libraryDir)

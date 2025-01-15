@@ -7,7 +7,9 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
+	natsserver "github.com/nats-io/nats-server/v2/server"
 	"github.com/nats-io/nats.go"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/net/context"
@@ -20,12 +22,14 @@ import (
 
 func main() {
 	// Parse command-line flags
-	backendFlag := flag.String("backend", msgstore.BACKEND_ETCD_NAME, "Storage backend to use (etcd, sqlite, flatfile)")
+	backendName := flag.String("backend", msgstore.BACKEND_FILE_NAME, "Storage backend to use (etcd, sqlite, flatfile)")
 	etcdURL := flag.String("etcdurl", "localhost:2379", "URL of etcd server")
 	natsURL := flag.String("natsurl", "", "URL of NATS server")
 	logLevel := flag.String("log", "info", "Logging level (debug, info, warn, error)")
 	httpPort := flag.Int("port", DEFAULT_HTTP_PORT, "HTTP port to bind to")
 	pluginDir := flag.String("plugin", "", "Plugin directory")
+	libraryDir := flag.String("library", "", "Library directory")
+	scriptDir := flag.String("script", ".", "Script directory")
 	flag.Parse()
 
 	// Set up logging
@@ -36,15 +40,41 @@ func main() {
 	log.SetLevel(level)
 
 	// Create the ScriptStore based on the selected backend
-	scriptStore, err := msgstore.StoreByName(*backendFlag, *etcdURL)
+	scriptStore, err := msgstore.StoreByName(*backendName, *etcdURL, *scriptDir, *libraryDir)
 	if err != nil {
 		log.Fatalf("failed to initialize the script store: %v", err)
 	}
+	log.Infof("Starting %s backend", *backendName)
 
-	// Connect to NATS
 	if *natsURL == "" {
 		*natsURL = msgscript.NatsUrlByEnv()
+
+		if *natsURL == "" {
+			// nats isn't provided, we can start an embeded one
+			log.Info("Starting embeded NATS server...")
+			ns, err := natsserver.NewServer(&natsserver.Options{
+				Host: "127.0.0.1",
+				Port: 9222,
+			})
+			if err != nil {
+				log.Fatalf("failed to start embeded NATS server: %v", err)
+			}
+
+			go ns.Start()
+			*natsURL = ns.ClientURL()
+
+			for {
+				if ns.ReadyForConnections(1 * time.Second) {
+					log.Info("NATS server started")
+					break
+				}
+
+				log.Info("Waiting for embeded NATS server to start...")
+				time.Sleep(1 * time.Second)
+			}
+		}
 	}
+
 	nc, err := nats.Connect(*natsURL)
 	if err != nil {
 		log.Fatalf("Failed to connect to NATS: %v", err)

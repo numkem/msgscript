@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/numkem/msgscript/script"
+	"github.com/numkem/msgscript"
 	msgstore "github.com/numkem/msgscript/store"
 )
 
@@ -37,7 +37,7 @@ func init() {
 }
 
 func addCmdRun(cmd *cobra.Command, args []string) {
-	scriptStore, err := msgstore.StoreByName(cmd.Flag("backend").Value.String(), cmd.Flag("etcdurls").Value.String())
+	scriptStore, err := msgstore.StoreByName(cmd.Flag("backend").Value.String(), cmd.Flag("etcdurls").Value.String(), "", "")
 	if err != nil {
 		cmd.PrintErrf("failed to get script store: %v", err)
 		return
@@ -46,8 +46,7 @@ func addCmdRun(cmd *cobra.Command, args []string) {
 	name := cmd.Flag("name").Value.String()
 
 	// Try to read the file to see if we can find headers
-	s := new(script.Script)
-	err = s.ReadFile(args[0])
+	s, err := msgscript.ReadFile(args[0])
 	if err != nil {
 		cmd.PrintErrf("failed to read the script file %s: %v", args[0], err)
 		return
@@ -70,7 +69,7 @@ func addCmdRun(cmd *cobra.Command, args []string) {
 	}
 
 	// Add the script to etcd under the given subject
-	err = scriptStore.AddScript(cmd.Context(), subject, name, string(s.Content))
+	err = scriptStore.AddScript(cmd.Context(), subject, name, s.Content)
 	if err != nil {
 		cmd.PrintErrf("Failed to add script to etcd: %v", err)
 		return
