@@ -137,8 +137,6 @@ func (f *FileScriptStore) LoadLibrairies(ctx context.Context, libraryPaths []str
 		if ok {
 			libraries = append(libraries, v.([]byte))
 		}
-
-		libraries = append(libraries, []byte(fmt.Sprintf("library %s", path)))
 	}
 
 	return libraries, nil
