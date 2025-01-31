@@ -116,7 +116,6 @@ func main() {
 		// Even if you feed it another JSON where none of the keys matches,
 		// it will just end up being an empty struct
 		if m.Payload == nil {
-			log.Warn("Message received isn't in JSON format, won't have extra features")
 			m = &script.Message{
 				Subject: msg.Subject,
 				Payload: msg.Data,
