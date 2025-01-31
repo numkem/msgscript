@@ -57,7 +57,7 @@ in
     };
 
     libraryDir = mkOption {
-      type = type.str;
+      type = types.str;
       default = "${cfg.dataDir}/libs";
     };
 
