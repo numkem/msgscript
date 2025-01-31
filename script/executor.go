@@ -234,16 +234,22 @@ func (se *ScriptExecutor) HandleMessage(ctx context.Context, msg *Message, reply
 				//   - The subject
 				//   - The body of the message
 				log.WithFields(fields).Debug("Running standard script")
+
 				gOnMessage := L.GetGlobal("OnMessage")
-				if gOnMessage.Type().String() != "nil" {
-					if err := L.CallByParam(lua.P{
-						Fn:      gOnMessage,
-						NRet:    1,
-						Protect: true,
-					}, lua.LString(msg.Subject), lua.LString(string(msg.Payload))); err != nil {
-						r.Error = fmt.Errorf("failed to call OnMessage function: %v", err).Error()
-						return
-					}
+				if gOnMessage.Type().String() == "nil" {
+					r.Error = "failed to find global function named 'OnMessage'"
+					return
+				}
+
+				// Call the "OnMessage" function
+				err := L.CallByParam(lua.P{
+					Fn:      gOnMessage,
+					NRet:    1,
+					Protect: true,
+				}, lua.LString(msg.Subject), lua.LString(string(msg.Payload)))
+				if err != nil {
+					r.Error = fmt.Errorf("failed to call OnMessage function: %v", err).Error()
+					return
 				}
 			}
 
