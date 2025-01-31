@@ -80,7 +80,7 @@ in
       restartIfChanged = true;
 
       serviceConfig = {
-        ExecStart = "${pkgs.msgscript-server}/bin/msgscript -backend ${cfg.backend} -etcdurl ${lib.concatStringsSep "," cfg.etcdEndpoints} -natsurl ${cfg.natsUrl} -plugin ${pluginDir} -script ${cfg.script} -library ${cfg.libraryDir}";
+        ExecStart = "${pkgs.msgscript-server}/bin/msgscript -backend ${cfg.backend} -etcdurl ${lib.concatStringsSep "," cfg.etcdEndpoints} -natsurl ${cfg.natsUrl} -plugin ${pluginDir} -script ${cfg.scriptDir} -library ${cfg.libraryDir}";
 
         User = cfg.user;
         Group = cfg.group;
