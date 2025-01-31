@@ -138,7 +138,7 @@ in
       msgscript = {
         inherit (cfg) group;
         isSystemUser = true;
-        home = "${cfg.user}";
+        home = cfg.dataDir;
       };
     };
 
