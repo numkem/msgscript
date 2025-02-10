@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/cjoudrey/gluahttp"
 	luajson "github.com/layeh/gopher-json"
@@ -23,6 +24,8 @@ import (
 	msgplugins "github.com/numkem/msgscript/plugins"
 	msgstore "github.com/numkem/msgscript/store"
 )
+
+const MAX_LUA_RUNNING_TIME = 2 * time.Minute
 
 type Message struct {
 	Subject string `json:"subject"`
@@ -170,7 +173,9 @@ func (se *ScriptExecutor) HandleMessage(ctx context.Context, msg *Message, reply
 			log.WithFields(fields).WithField("isHTML", s.HTML).Debug("executing script")
 
 			L := lua.NewState()
-			L.SetContext(se.ctx)
+			tctx, tcan := context.WithTimeout(se.ctx, MAX_LUA_RUNNING_TIME)
+			defer tcan()
+			L.SetContext(tctx)
 			defer L.Close()
 
 			// Set up the Lua state with the subject and payload
