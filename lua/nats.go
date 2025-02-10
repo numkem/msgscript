@@ -41,5 +41,6 @@ func natsPublish(L *lua.LState) int {
 	}
 
 	L.Push(lua.LBool(true))
-	return 1
+	L.Push(lua.LNil)
+	return 2
 }
