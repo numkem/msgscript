@@ -124,6 +124,16 @@ func main() {
 
 		// Handle the message by invoking the corresponding Lua script
 		scriptExecutor.HandleMessage(ctx, m, func(r *script.Reply) {
+			fields := log.Fields{
+				"Subject": m.Subject,
+				"URL":     m.URL,
+				"Method":  m.Method,
+			}
+
+			if r.Error != "" {
+				log.WithFields(fields).Errorf("error while running script: %v", err)
+			}
+
 			// Send a reply if the message has a reply subject
 			if msg.Reply == "" {
 				return
@@ -131,12 +141,14 @@ func main() {
 
 			reply, err := r.JSON()
 			if err != nil {
-				log.Errorf("failed to serialize script reply to JSON: %v", err)
+				log.WithFields(fields).Errorf("failed to serialize script reply to JSON: %v", err)
 			}
+
+			log.WithFields(fields).Debugf("sent reply: %s", reply)
 
 			err = nc.Publish(msg.Reply, reply)
 			if err != nil {
-				log.Errorf("failed to publish reply after running script: %v", err)
+				log.WithFields(fields).Errorf("failed to publish reply after running script: %v", err)
 			}
 		})
 	})
