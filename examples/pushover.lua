@@ -1,3 +1,5 @@
+--* subject: funcs.pushover
+--* name: pushover
 local http = require("http")
 local json = require("json")
 

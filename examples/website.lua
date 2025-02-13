@@ -1,5 +1,6 @@
 --* subject: http.website
 --* name: demo
+--* http: true
 local template = require("template")
 local mustache, _ = template.choose("mustache")
 
