@@ -28,7 +28,7 @@
 
 <!-- markdown-toc end -->
 
-TLDR: msgscript is what you could call a poor's man Lambda-like function/application server. It can run function and even some small web based applications.
+TLDR: msgscript is what you could call a poor man's Lambda-like function/application server. It can run functions and even some small web based applications.
 
 ## Features
 
@@ -78,10 +78,6 @@ It's possible to call this mode both through NATS or with the HTTP handler.
 
 #### In HTTP mode
 
-If you want to use the HTTP handler, you can do so by setting the `http` header to `true`.
-
-Once this is done, the function executed will have the same name as the HTTP verb of the originating HTTP request.
-
 Example, for a GET request:
 
 ``` lua
@@ -90,13 +86,21 @@ Example, for a GET request:
 --* http: true
 
 function GET(url, body)
-    return "Hello, " .. body .. "!"
+    return "Hello, " .. body .. "!", 200, { ["Content-Type"] = "text/plain" }
 end
 ```
 
+The function executed will have the same name as the HTTP verb of the originating HTTP request.
+
 This mode is only available with the HTTP handler.
 
-#### Return value
+#### In HTTP+HTML mode
+
+If you want to use the HTTP handler and want to return HTML, you can do so by setting the `http` header to `true`.
+
+Just like in HTTP mode, the function executed will have the same name as the HTTP verb of the originating HTTP request.
+
+### Return value
 
 The function is expected to return a string. If it does not, the server will log a warning: `Script returned no response`. 
 
@@ -118,17 +122,16 @@ In **HTTP+HTML** mode: you can return 3 different values:
 - The HTTP code (200 is missing)
 - The HTTP headers (empty if missing)
 
-
-### HTTP handler
+## HTTP handler
 
 If you have a application that cannot reach nats by itself (say a webhook), it's possible to use the included HTTP handler.
 
-The server listens to port 7643 by default. You can push messages by doing a POST request to `http://serverIP:7643/<subject>` where the `<subject>` is any subjects that you have scripts registered to it.
+The server listens to port 7643 by default (it can be changed through the command line). You can push messages by doing a POST request to `http://serverIP:7643/<subject>` where the `<subject>` is any subjects that you have scripts registered to it.
 
-Example using curl (for localhost, and for the subject of the example above):
+Example using curl (if you are running locally and for the subject of the example above):
 
 ```
-curl -X POST http://localhost:7643/http.hello
+curl -X POST -d 'John' http://127.0.0.1:7643/http.hello
 ```
 
 ## Installation
@@ -183,6 +186,8 @@ msgscriptcli add -subject funcs.pushover -name pushover ./examples/pushover.lua
 ```
 
 This command adds the `pushover.lua` script from the `examples` directory, associating it with the subject `funcs.pushover` and the name `pushover`.
+
+The `-subject` and `-name` flags are optional. If they are not provided, they will be read through the headers contained in the file.
 
 ## Writing Lua Scripts
 
