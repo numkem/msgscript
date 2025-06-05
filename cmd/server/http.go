@@ -17,6 +17,7 @@ import (
 )
 
 const DEFAULT_HTTP_PORT = 7643
+const DEFAULT_HTTP_TIMEOUT = 5 * time.Second
 
 type httpNatsProxy struct {
 	port string
@@ -65,7 +66,16 @@ func (p *httpNatsProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), time.Second*5)
+	// We can override the HTTP timeout by passing the `_timeout` query string
+	timeout := DEFAULT_HTTP_TIMEOUT
+	if r.URL.Query().Has("_timeout") {
+		timeout, err = time.ParseDuration(r.URL.Query().Get("_timeout"))
+		if err != nil {
+			timeout = DEFAULT_HTTP_TIMEOUT
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), timeout)
 	defer cancel()
 
 	url := strings.Replace(r.URL.String(), "/"+subject, "", -1)
