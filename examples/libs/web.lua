@@ -2,6 +2,7 @@
 local template = require("template")
 local mustache, _ = template.choose("mustache")
 local json = require("json")
+local strings = require("strings")
 
 Router = {}
 Router.__index = Router
@@ -76,9 +77,18 @@ function Router:handle(method, url, payload)
     -- extract the path and query from the url
     local path, query = self:parseRequest(method, url)
 
+    -- Parse the payload for key/value from a form
+    local formkv = {}
+    for _, field in pairs(strings.split(payload, "&")) do
+        local kv = strings.split(field, "=")
+        if (#kv == 2) then
+            formkv[kv[1]] = kv[2]
+        end
+    end
+
     -- First, check for exact route match
     if self.routes[method][path] then
-        local tmpl_ret, data, code, opts = self.routes[method][path](Request.new(query), payload)
+        local tmpl_ret, data, code, opts = self.routes[method][path](Request.new(query, nil, formkv), payload)
         return self:processResponse(tmpl_ret, data, code, opts)
     end
 
@@ -86,18 +96,20 @@ function Router:handle(method, url, payload)
     for pattern, handler in pairs(self.routes[method]) do
         local params = self:matchURLPattern(pattern, path)
         if next(params) ~= nil then
-            -- Create a request with both query and URL params
+            -- Parse queries
             local queries = {}
             for k, v in pairs(query or {}) do
                 queries[k] = v
             end
 
+            -- Parse the paths from the URLs
             local paths = {}
             for k, v in pairs(params) do
                 paths[k] = v
             end
 
-            local tmpl_ret, data, code, opts = handler(Request.new(queries, paths), payload)
+            -- Execute the handler
+            local tmpl_ret, data, code, opts = handler(Request.new(queries, paths, formkv), payload)
             return self:processResponse(tmpl_ret, data, code, opts)
         end
     end
@@ -110,6 +122,11 @@ function Router:processResponse(tmpl_ret, data, code, opts)
     if data == nil then data = {} end
     if code == nil then code = 200 end
     if opts == nil then opts = { headers = {}, no_template = false } end
+
+    -- Process redirects
+    if opts.redirect then
+        return "", 302, { Location = opts.redirect }
+    end
 
     -- If we have no template ("" or nil), we use the data as a JSON response
     if tmpl_ret == "" or tmpl_ret == nil then
@@ -219,8 +236,8 @@ end
 Request = {}
 Request.__index = Request
 
-function Request.new(queries, paths)
-    return setmetatable({ queries = queries, paths = paths }, Request)
+function Request.new(queries, paths, formkv)
+    return setmetatable({ queries = queries, paths = paths, form = formkv }, Request)
 end
 
 function Request:query(name)
