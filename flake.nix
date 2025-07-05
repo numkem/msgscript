@@ -8,8 +8,8 @@
   outputs =
     { self, nixpkgs }:
     let
-      version = "0.3.1";
-      vendorHash = "sha256-SWa/3XPKHhqOOHm77I7X1Yr6Iw4ItXYuU+9DtsgX9ZE=";
+      version = "0.3.3";
+      vendorHash = "sha256-gb4XJGqMapppYMmAECW6D/X6exn3sgDqi5qYHOQPYC0=";
 
       mkCli =
         pkgs:
