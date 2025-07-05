@@ -5,7 +5,7 @@
 local vault = require("vault")
 
 function GET(_, _)
-    local v, err = vault.new("https://192.168.0.7:8200", "<passed>")
+    local v, err = vault.new("https://127.0.0.1:8200", "<token>")
     if err ~= nil then
         return "conn: " .. err
     end
