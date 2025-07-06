@@ -36,7 +36,9 @@ func Preload(L *lua.LState) {
 }
 
 func new(L *lua.LState) int {
-	v, err := newVaultKVLuaClient(L.CheckString(1), L.CheckString(2))
+	fromEnv := L.OptBool(1, false)
+
+	v, err := newVaultKVLuaClient(L.CheckString(1), L.CheckString(2), fromEnv)
 	if err != nil {
 		L.Push(lua.LNil)
 		L.Push(lua.LString(fmt.Sprintf("failed to create new vault client: %v", err)))
@@ -56,7 +58,7 @@ type vaultKVLuaClient struct {
 	client *vaultapi.Client
 }
 
-func newVaultKVLuaClient(address, token string) (*vaultKVLuaClient, error) {
+func newVaultKVLuaClient(address, token string, fromEnv bool) (*vaultKVLuaClient, error) {
 	config := api.DefaultConfig()
 
 	// Configure TLS to skip verification
@@ -68,13 +70,21 @@ func newVaultKVLuaClient(address, token string) (*vaultKVLuaClient, error) {
 	config.HttpClient.Transport = &http.Transport{
 		TLSClientConfig: tlsConfig,
 	}
+	if fromEnv {
+		err := config.ReadEnvironment()
+		if err != nil {
+			log.WithField("plugin", "vault").Errorf("failed to read configuration from environment: %v", err)
+		}
+	}
 
 	client, err := vaultapi.NewClient(config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to vault: %v", err)
 	}
-	client.SetToken(token)
-	client.SetAddress(address)
+	if !fromEnv {
+		client.SetToken(token)
+		client.SetAddress(address)
+	}
 
 	return &vaultKVLuaClient{client: client}, nil
 }
