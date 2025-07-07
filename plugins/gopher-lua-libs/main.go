@@ -18,7 +18,7 @@ import (
 	"github.com/yuin/gopher-lua"
 )
 
-func Preload(L *lua.LState) {
+func Preload(L *lua.LState, envs map[string]string) {
 	cmd.Preload(L)
 	crypto.Preload(L)
 	filepath.Preload(L)

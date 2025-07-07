@@ -7,7 +7,7 @@ import (
 	"github.com/yuin/gopher-lua"
 )
 
-func Preload(L *lua.LState) {
+func Preload(L *lua.LState, envs map[string]string) {
 	L.PreloadModule("mysql", mysql.Loader)
 	L.PreloadModule("sqlite3", sqlite3.Loader)
 	gluasql.Preload(L)

@@ -5,6 +5,6 @@ import (
 	"github.com/yuin/gopher-lua"
 )
 
-func Preload(L *lua.LState) {
+func Preload(L *lua.LState, envs map[string]string) {
 	L.PreloadModule("scrape", gluahttpscrape.NewHttpScrapeModule().Loader)
 }

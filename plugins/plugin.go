@@ -5,12 +5,13 @@ import (
 	"os"
 	"path/filepath"
 	"plugin"
+	"strings"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/yuin/gopher-lua"
 )
 
-type PreloadFunc func(L *lua.LState)
+type PreloadFunc func(L *lua.LState, envs map[string]string)
 
 func ReadPluginDir(dirpath string) ([]PreloadFunc, error) {
 	entries, err := os.ReadDir(dirpath)
@@ -39,7 +40,7 @@ func ReadPluginDir(dirpath string) ([]PreloadFunc, error) {
 			return nil, fmt.Errorf("failed to find Plugin symbol: %v", err)
 		}
 
-		mp, ok := symPreload.(func(*lua.LState))
+		mp, ok := symPreload.(func(*lua.LState, map[string]string))
 		if !ok {
 			return nil, fmt.Errorf("invalid plugin: %s", fullPath)
 		}
@@ -53,8 +54,14 @@ func ReadPluginDir(dirpath string) ([]PreloadFunc, error) {
 }
 
 func LoadPlugins(L *lua.LState, plugins []PreloadFunc) error {
+	envs := make(map[string]string)
+	for _, e := range os.Environ() {
+		pair := strings.SplitN(e, "=", 2)
+		envs[pair[0]] = pair[1]
+	}
+
 	for _, preload := range plugins {
-		preload(L)
+		preload(L, envs)
 	}
 
 	return nil

@@ -6,7 +6,7 @@ import (
 	"github.com/yuin/gopher-lua"
 )
 
-func Preload(L *lua.LState) {
+func Preload(L *lua.LState, envs map[string]string) {
 	L.PreloadModule("hello", func(L *lua.LState) int {
 		mod := L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
 			"print": print,
