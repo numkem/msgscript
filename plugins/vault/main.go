@@ -14,7 +14,11 @@ import (
 
 const DEFAULT_VAULT_TIMEOUT = 5 * time.Second
 
-func Preload(L *lua.LState) {
+var ALL_ENVS map[string]string
+
+func Preload(L *lua.LState, envs map[string]string) {
+	ALL_ENVS = envs
+
 	L.PreloadModule("vault", func(L *lua.LState) int {
 		mod := L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
 			"new": new,
@@ -36,9 +40,8 @@ func Preload(L *lua.LState) {
 }
 
 func new(L *lua.LState) int {
-	fromEnv := L.OptBool(1, false)
-
-	v, err := newVaultKVLuaClient(L.CheckString(1), L.CheckString(2), fromEnv)
+	address, token, fromEnv := L.CheckString(1), L.CheckString(2), L.OptBool(3, false)
+	v, err := newVaultKVLuaClient(address, token, fromEnv)
 	if err != nil {
 		L.Push(lua.LNil)
 		L.Push(lua.LString(fmt.Sprintf("failed to create new vault client: %v", err)))
@@ -70,18 +73,16 @@ func newVaultKVLuaClient(address, token string, fromEnv bool) (*vaultKVLuaClient
 	config.HttpClient.Transport = &http.Transport{
 		TLSClientConfig: tlsConfig,
 	}
-	if fromEnv {
-		err := config.ReadEnvironment()
-		if err != nil {
-			log.WithField("plugin", "vault").Errorf("failed to read configuration from environment: %v", err)
-		}
-	}
 
 	client, err := vaultapi.NewClient(config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to vault: %v", err)
 	}
-	if !fromEnv {
+
+	if fromEnv {
+		client.SetAddress(ALL_ENVS[vaultapi.EnvVaultAddress])
+		client.SetToken(ALL_ENVS[vaultapi.EnvVaultToken])
+	} else {
 		client.SetToken(token)
 		client.SetAddress(address)
 	}
