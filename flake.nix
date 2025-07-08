@@ -9,7 +9,7 @@
     { self, nixpkgs }:
     let
       version = "0.3.3";
-      vendorHash = "sha256-gb4XJGqMapppYMmAECW6D/X6exn3sgDqi5qYHOQPYC0=";
+      vendorHash = "sha256-fzewi3w2NYEVSDfar01w73UDH/zQ/Zt9Hspb8ZfjphQ=";
 
       mkCli =
         pkgs:
