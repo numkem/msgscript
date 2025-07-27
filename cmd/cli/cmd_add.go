@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/numkem/msgscript"
+	scriptLib "github.com/numkem/msgscript/script"
 	msgstore "github.com/numkem/msgscript/store"
 )
 
@@ -46,7 +46,7 @@ func addCmdRun(cmd *cobra.Command, args []string) {
 	name := cmd.Flag("name").Value.String()
 
 	// Try to read the file to see if we can find headers
-	s, err := msgscript.ReadFile(args[0])
+	s, err := scriptLib.ReadFile(args[0])
 	if err != nil {
 		cmd.PrintErrf("failed to read the script file %s: %v", args[0], err)
 		return

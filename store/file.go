@@ -7,8 +7,9 @@ import (
 	"sync"
 
 	"github.com/fsnotify/fsnotify"
-	"github.com/numkem/msgscript"
 	log "github.com/sirupsen/logrus"
+
+	"github.com/numkem/msgscript/script"
 )
 
 type FileScriptStore struct {
@@ -95,7 +96,7 @@ func (f *FileScriptStore) WatchScripts(ctx context.Context, subject string, onCh
 			if event.Op&fsnotify.Write == fsnotify.Write {
 				log.Infof("File modified: %s", f.filePath)
 
-				scr, err := msgscript.ReadFile(filepath.Join(f.filePath, event.Name))
+				scr, err := script.ReadFile(filepath.Join(f.filePath, event.Name))
 				if err != nil {
 					log.Errorf("failed to read script file %s: %v", f.filePath, err)
 				}

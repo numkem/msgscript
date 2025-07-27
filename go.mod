@@ -5,12 +5,12 @@ go 1.22.6
 replace github.com/openbao/openbao/api v1.12.2 => github.com/hashicorp/vault/api v1.12.2
 
 require (
+	github.com/bytecodealliance/wasmtime-go/v35 v35.0.0
 	github.com/cjoudrey/gluahttp v0.0.0-20201111170219-25003d9adfa9
 	github.com/felipejfc/gluahttpscrape v0.0.0-20170525191632-10580c4a38f9
 	github.com/fsnotify/fsnotify v1.8.0
 	github.com/jedib0t/go-pretty/v6 v6.5.9
 	github.com/layeh/gopher-json v0.0.0-20201124131017-552bb3c4c3bf
-	github.com/lib/pq v1.10.9
 	github.com/nats-io/nats-server/v2 v2.10.24
 	github.com/nats-io/nats.go v1.37.0
 	github.com/openbao/openbao/api v1.12.2

@@ -7,9 +7,9 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
-	"github.com/numkem/msgscript"
+	"github.com/numkem/msgscript/executor"
 	msgplugin "github.com/numkem/msgscript/plugins"
-	"github.com/numkem/msgscript/script"
+	scriptLib "github.com/numkem/msgscript/script"
 	msgstore "github.com/numkem/msgscript/store"
 )
 
@@ -58,13 +58,14 @@ func devCmdRun(cmd *cobra.Command, args []string) {
 		}
 	}
 
-	scriptExecutor := script.NewScriptExecutor(store, plugins, nil)
+	luaExecutor := executor.NewLuaExecutor(store, plugins, nil)
+	wasmExecutor := executor.NewWasmExecutor(store, nil, nil)
 
 	subject := cmd.Flag("subject").Value.String()
 	name := cmd.Flag("name").Value.String()
 
 	// Try to read the file to see if we can find headers
-	s, err := msgscript.ReadFile(args[0])
+	s, err := scriptLib.ReadFile(args[0])
 	if err != nil {
 		log.Errorf("failed to read the script file %s: %v\n", args[0], err)
 		return
@@ -90,7 +91,7 @@ func devCmdRun(cmd *cobra.Command, args []string) {
 	// Add the given script to the store
 	err = store.AddScript(cmd.Context(), subject, name, s.Content)
 	if err != nil {
-		cmd.PrintErrf("failed to add script to store: %v\n")
+		cmd.PrintErrf("failed to add script to store: %v\n", err)
 		return
 	}
 
@@ -119,11 +120,13 @@ func devCmdRun(cmd *cobra.Command, args []string) {
 	stopChan := make(chan struct{}, 1)
 	log.WithFields(fields).Debug("running the function")
 
-	m := &script.Message{
-		Payload: payload,
-		Subject: subject,
+	m := &executor.Message{
+		Payload:  payload,
+		Subject:  subject,
+		Executor: cmd.Flag("executor").Value.String(),
 	}
-	scriptExecutor.HandleMessage(cmd.Context(), m, func(r *script.Reply) {
+
+	replyFunc := func(r *executor.Reply) {
 		fields := log.Fields{"subject": subject}
 		log.WithFields(fields).Debug("script replied")
 
@@ -134,8 +137,18 @@ func devCmdRun(cmd *cobra.Command, args []string) {
 
 		cmd.Printf("Result: %v\n", string(j))
 		stopChan <- struct{}{}
-	})
+	}
+
+	switch m.Executor {
+	case executor.EXECUTOR_LUA_NAME:
+		luaExecutor.HandleMessage(cmd.Context(), m, replyFunc)
+	case executor.EXECUTOR_WASM_NAME:
+		wasmExecutor.HandleMessage(cmd.Context(), m, replyFunc)
+	default:
+		luaExecutor.HandleMessage(cmd.Context(), m, replyFunc)
+	}
 
 	<-stopChan
-	scriptExecutor.Stop()
+	luaExecutor.Stop()
+	wasmExecutor.Stop()
 }

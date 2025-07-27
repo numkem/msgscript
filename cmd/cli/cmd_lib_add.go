@@ -9,7 +9,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
-	"github.com/numkem/msgscript"
+	scriptLib "github.com/numkem/msgscript/script"
 	msgstore "github.com/numkem/msgscript/store"
 )
 
@@ -59,8 +59,8 @@ func libAddRun(cmd *cobra.Command, args []string) {
 	cmd.Printf("Added %d libraries\n", len(libraries))
 }
 
-func parseDirsForLibraries(dirnames []string, recursive bool) ([]*msgscript.Script, error) {
-	var scripts []*msgscript.Script
+func parseDirsForLibraries(dirnames []string, recursive bool) ([]*scriptLib.Script, error) {
+	var scripts []*scriptLib.Script
 	for _, fname := range dirnames {
 		stat, err := os.Stat(fname)
 		if err != nil {
@@ -77,7 +77,7 @@ func parseDirsForLibraries(dirnames []string, recursive bool) ([]*msgscript.Scri
 
 					if path.Ext(filename) == ".lua" {
 						fullname := path.Join(fname, filename)
-						s, err := msgscript.ReadFile(fullname)
+						s, err := scriptLib.ReadFile(fullname)
 						if err != nil {
 							return fmt.Errorf("failed to read script %s: %v", fullname, err)
 						}
@@ -97,7 +97,7 @@ func parseDirsForLibraries(dirnames []string, recursive bool) ([]*msgscript.Scri
 					if path.Ext(e.Name()) == ".lua" {
 						fullname := path.Join(fname, e.Name())
 
-						s, err := msgscript.ReadFile(fname)
+						s, err := scriptLib.ReadFile(fname)
 						if err != nil {
 							return nil, fmt.Errorf("failed to read script %s: %v", fullname, err)
 						}
@@ -108,7 +108,7 @@ func parseDirsForLibraries(dirnames []string, recursive bool) ([]*msgscript.Scri
 
 			}
 		} else {
-			s, err := msgscript.ReadFile(fname)
+			s, err := scriptLib.ReadFile(fname)
 			if err != nil {
 				return nil, fmt.Errorf("failed to read file %s: %v", fname, err)
 			}

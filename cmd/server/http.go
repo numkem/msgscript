@@ -13,7 +13,7 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/numkem/msgscript"
-	"github.com/numkem/msgscript/script"
+	"github.com/numkem/msgscript/executor"
 )
 
 const DEFAULT_HTTP_PORT = 7643
@@ -80,7 +80,7 @@ func (p *httpNatsProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	url := strings.Replace(r.URL.String(), "/"+subject, "", -1)
 	log.Debug(url)
-	body, err := json.Marshal(&script.Message{
+	body, err := json.Marshal(&executor.Message{
 		Payload: payload,
 		Method:  r.Method,
 		Subject: subject,
@@ -98,7 +98,7 @@ func (p *httpNatsProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rep := new(script.Reply)
+	rep := new(executor.Reply)
 	err = json.Unmarshal(msg.Data, rep)
 	if err != nil {
 		w.WriteHeader(http.StatusFailedDependency)
@@ -107,7 +107,7 @@ func (p *httpNatsProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if rep.Error != "" {
-		if rep.Error == (&script.NoScriptFoundError{}).Error() {
+		if rep.Error == (&executor.NoScriptFoundError{}).Error() {
 			w.WriteHeader(http.StatusNotFound)
 		} else {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -156,7 +156,7 @@ func (p *httpNatsProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func hasHTMLResult(results map[string]*script.ScriptResult) (bool, *script.ScriptResult) {
+func hasHTMLResult(results map[string]*executor.ScriptResult) (bool, *executor.ScriptResult) {
 	for _, sr := range results {
 		if sr.IsHTML {
 			return true, sr

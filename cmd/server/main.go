@@ -15,8 +15,8 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/numkem/msgscript"
+	"github.com/numkem/msgscript/executor"
 	msgplugin "github.com/numkem/msgscript/plugins"
-	"github.com/numkem/msgscript/script"
 	msgstore "github.com/numkem/msgscript/store"
 )
 
@@ -39,6 +39,10 @@ func main() {
 	}
 	log.SetLevel(level)
 
+	if os.Getenv("DEBUG") != "" {
+		log.SetLevel(log.DebugLevel)
+	}
+
 	// Create the ScriptStore based on the selected backend
 	scriptStore, err := msgstore.StoreByName(*backendName, *etcdURL, *scriptDir, *libraryDir)
 	if err != nil {
@@ -51,10 +55,10 @@ func main() {
 
 		if *natsURL == "" {
 			// nats isn't provided, we can start an embeded one
-			log.Info("Starting embeded NATS server...")
+			log.Info("Starting embeded NATS server... on 127.0.0.1:4222")
 			ns, err := natsserver.NewServer(&natsserver.Options{
 				Host: "127.0.0.1",
-				Port: 9222,
+				Port: 4222,
 			})
 			if err != nil {
 				log.Fatalf("failed to start embeded NATS server: %v", err)
@@ -89,7 +93,9 @@ func main() {
 			log.Fatalf("failed to read plugins: %v", err)
 		}
 	}
-	scriptExecutor := script.NewScriptExecutor(scriptStore, plugins, nc)
+
+	luaExecutor := executor.NewLuaExecutor(scriptStore, plugins, nc)
+	wasmExecutor := executor.NewWasmExecutor(scriptStore, nil, nil)
 
 	log.Info("Starting message watch...")
 
@@ -105,25 +111,26 @@ func main() {
 			return
 		}
 
-		m := new(script.Message)
+		m := new(executor.Message)
 		err = json.Unmarshal(msg.Data, m)
 		// if the payload isn't a JSON Message, take it as a whole
 		if err != nil {
-			log.Errorf("failed to parse message: %v", err)
+			m.Subject = msg.Subject
+			m.Payload = msg.Data
+			m.Raw = true
 		}
 
 		// The above unmarshalling only applies to the structure of the JSON.
 		// Even if you feed it another JSON where none of the keys matches,
 		// it will just end up being an empty struct
 		if m.Payload == nil {
-			m = &script.Message{
+			m = &executor.Message{
 				Subject: msg.Subject,
 				Payload: msg.Data,
 			}
 		}
 
-		// Handle the message by invoking the corresponding Lua script
-		scriptExecutor.HandleMessage(ctx, m, func(r *script.Reply) {
+		messageReply := func(r *executor.Reply) {
 			fields := log.Fields{
 				"Subject": m.Subject,
 				"URL":     m.URL,
@@ -139,18 +146,36 @@ func main() {
 				return
 			}
 
-			reply, err := r.JSON()
-			if err != nil {
-				log.WithFields(fields).Errorf("failed to serialize script reply to JSON: %v", err)
+			var reply []byte
+			if !m.Raw {
+				reply, err = r.JSON()
+				if err != nil {
+					log.WithFields(fields).Errorf("failed to serialize script reply to JSON: %v", err)
+				}
+			} else {
+				if r.Error != "" {
+					reply = []byte(r.Error)
+				} else {
+					reply = r.Bytes()
+				}
 			}
 
 			log.WithFields(fields).Debugf("sent reply: %s", reply)
-
 			err = nc.Publish(msg.Reply, reply)
 			if err != nil {
 				log.WithFields(fields).Errorf("failed to publish reply after running script: %v", err)
 			}
-		})
+		}
+
+		// Handle the message by invoking the corresponding Lua script
+		switch m.Executor {
+		case executor.EXECUTOR_LUA_NAME:
+			luaExecutor.HandleMessage(ctx, m, messageReply)
+		case executor.EXECUTOR_WASM_NAME:
+			wasmExecutor.HandleMessage(ctx, m, messageReply)
+		default:
+			luaExecutor.HandleMessage(ctx, m, messageReply)
+		}
 	})
 	if err != nil {
 		log.Fatalf("Failed to subscribe to NATS subjects: %v", err)
@@ -166,5 +191,6 @@ func main() {
 	cancel()
 
 	log.Info("Received shutdown signal, stopping server...")
-	scriptExecutor.Stop()
+	luaExecutor.Stop()
+	wasmExecutor.Stop()
 }

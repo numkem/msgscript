@@ -1,4 +1,4 @@
-package msgscript
+package script
 
 import (
 	"bufio"
@@ -16,11 +16,12 @@ const (
 )
 
 type Script struct {
-	Name    string
-	Subject string
-	HTML    bool
-	Content []byte
-	LibKeys []string
+	Content  []byte
+	Executor string
+	HTML     bool
+	LibKeys  []string
+	Name     string
+	Subject  string
 }
 
 func ReadFile(filename string) (*Script, error) {
@@ -50,9 +51,21 @@ func ReadString(content string) (*Script, error) {
 	return s, nil
 }
 
-func getHeaderValue(line, header string) string {
-	if strings.HasPrefix(line, header) {
-		return strings.TrimSpace(strings.Replace(line, header, "", 1))
+func getHeaderKey(line string) string {
+	if strings.HasPrefix(line, HEADER_PATTERN) {
+		ss := strings.Split(line, " ")
+		if len(ss) >= 2 {
+			return strings.TrimSuffix(ss[1], ":")
+		}
+	}
+
+	return ""
+}
+
+func getHeaderValue(line string) string {
+	ss := strings.Split(line, " ")
+	if len(ss) >= 3 {
+		return strings.Join(ss[2:], " ")
 	}
 
 	return ""
@@ -67,30 +80,29 @@ func (s *Script) Read(f io.Reader) error {
 	var b strings.Builder
 	for scanner.Scan() {
 		line := scanner.Text()
-		if v := getHeaderValue(line, headerKey("subject")); v != "" {
+
+		k := getHeaderKey(line)
+		v := getHeaderValue(line)
+		switch k {
+		case "subject":
 			s.Subject = v
-		}
-		if v := getHeaderValue(line, headerKey("name")); v != "" {
+		case "name":
 			s.Name = v
-		}
-		if v := getHeaderValue(line, headerKey("require")); v != "" {
+		case "require":
 			s.LibKeys = append(s.LibKeys, v)
-		}
-		if v := getHeaderValue(line, headerKey("html")); v != "" {
+		case "html":
 			s.HTML = true
-		}
-
-		_, err := b.WriteString(line + "\n")
-		if err != nil {
-			return fmt.Errorf("failed to write to builder: %v", err)
+		case "executor":
+			s.Executor = v
+		default:
+			_, err := b.WriteString(line + "\n")
+			if err != nil {
+				return fmt.Errorf("failed to write to builder: %v", err)
+			}
 		}
 	}
 
-	s.Content = []byte(strings.TrimSuffix(b.String(), "\n"))
-
-	if err := scanner.Err(); err != nil {
-		return err
-	}
+	s.Content = []byte(b.String())
 
 	return nil
 }

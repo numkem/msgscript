@@ -14,9 +14,9 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
-	"github.com/numkem/msgscript"
+	"github.com/numkem/msgscript/executor"
 	msgplugin "github.com/numkem/msgscript/plugins"
-	"github.com/numkem/msgscript/script"
+	scriptLib "github.com/numkem/msgscript/script"
 	"github.com/numkem/msgscript/store"
 )
 
@@ -52,7 +52,16 @@ func devHttpCmdRun(cmd *cobra.Command, args []string) {
 		}
 	}
 
-	scriptExecutor := script.NewScriptExecutor(store, plugins, nil)
+	var scrExecutor executor.Executor
+	switch cmd.Flag("executor").Value.String() {
+	case executor.EXECUTOR_LUA_NAME:
+		scrExecutor = executor.NewLuaExecutor(store, plugins, nil)
+	case executor.EXECUTOR_WASM_NAME:
+		scrExecutor = executor.NewWasmExecutor(store, nil, nil)
+	default:
+		cmd.PrintErrf("unknown executor named %s", cmd.Flag("executor").Value.String())
+		return
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -72,7 +81,7 @@ func devHttpCmdRun(cmd *cobra.Command, args []string) {
 	go func() {
 		proxy := &devHttpProxy{
 			store:      store,
-			executor:   scriptExecutor,
+			executor:   scrExecutor,
 			context:    ctx,
 			scriptFile: fullpath,
 			libraryDir: fullLibraryDir,
@@ -88,12 +97,12 @@ func devHttpCmdRun(cmd *cobra.Command, args []string) {
 	cancel()
 
 	cmd.Println("Received shutdown signal, stopping server...")
-	scriptExecutor.Stop()
+	scrExecutor.Stop()
 }
 
 type devHttpProxy struct {
 	store      store.ScriptStore
-	executor   *script.ScriptExecutor
+	executor   executor.Executor
 	context    context.Context
 	scriptFile string
 	libraryDir string
@@ -121,12 +130,12 @@ func (p *devHttpProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	payload, err := io.ReadAll(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(fmt.Sprintf("failed to read request body: %v", err)))
+		fmt.Fprintf(w, "failed to read request body: %v", err)
 		return
 	}
 
 	// Load script from disk
-	s, err := msgscript.ReadFile(p.scriptFile)
+	s, err := scriptLib.ReadFile(p.scriptFile)
 	if err != nil {
 		log.WithField("filename", p.scriptFile).Errorf("failed to read file: %v", err)
 		return
@@ -146,25 +155,33 @@ func (p *devHttpProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Add only the currently worked on file
-	p.store.AddScript(p.context, s.Subject, s.Name, s.Content)
+	b, err := os.ReadFile(p.scriptFile)
+	if err != nil {
+		e := fmt.Errorf("failed to read script file %s: %v", p.scriptFile, err)
+		log.Error(e.Error())
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(e.Error()))
+		return
+	}
+	p.store.AddScript(p.context, s.Subject, s.Name, b)
 
 	// Create a new empty store at the end of each request
 	defer emptyStore(p.store, p.libraryDir)
 
-	url := strings.Replace(r.URL.String(), "/"+subject, "", -1)
+	url := strings.ReplaceAll(r.URL.String(), "/"+subject, "")
 	if url == "" {
 		url = "/"
 	}
 	log.Infof("URL: %s", url)
 
-	msg := &script.Message{
+	msg := &executor.Message{
 		Payload: payload,
 		Method:  r.Method,
 		Subject: subject,
 		URL:     url,
 	}
 
-	p.executor.HandleMessage(p.context, msg, func(rep *script.Reply) {
+	p.executor.HandleMessage(p.context, msg, func(rep *executor.Reply) {
 		fields := log.Fields{
 			"subject": msg.Subject,
 			"url":     msg.URL,
@@ -173,7 +190,7 @@ func (p *devHttpProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		log.WithFields(fields).Debugf("Results: %s", string(msg.Payload))
 
 		if rep.Error != "" {
-			if rep.Error == (&script.NoScriptFoundError{}).Error() {
+			if rep.Error == (&executor.NoScriptFoundError{}).Error() {
 				w.WriteHeader(http.StatusNotFound)
 			} else {
 				w.WriteHeader(http.StatusInternalServerError)
@@ -187,8 +204,8 @@ func (p *devHttpProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		rep.Results.Range(func(key, value interface{}) bool {
-			sr := value.(*script.ScriptResult)
+		rep.Results.Range(func(key, value any) bool {
+			sr := value.(*executor.ScriptResult)
 			if sr.IsHTML {
 				var hasContentType bool
 				for k, v := range sr.Headers {
@@ -210,7 +227,6 @@ func (p *devHttpProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 			return true
 		})
-
 	})
 }
 

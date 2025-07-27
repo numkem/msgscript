@@ -7,7 +7,7 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"github.com/numkem/msgscript"
+	"github.com/numkem/msgscript/script"
 )
 
 // Available backend options
@@ -57,7 +57,7 @@ func StoreByName(name, etcdEndpoints, scriptDir, libraryDir string) (ScriptStore
 		}
 
 		// Read all the scripts from the scripts directory and add them to the store
-		allScripts, err := msgscript.ReadScriptDirectory(scriptDir, false)
+		allScripts, err := script.ReadScriptDirectory(scriptDir, false)
 		if err != nil {
 			return nil, fmt.Errorf("failed to read scripts: %v", err)
 		}
@@ -74,7 +74,7 @@ func StoreByName(name, etcdEndpoints, scriptDir, libraryDir string) (ScriptStore
 
 		if libraryDir != "" {
 			// Read libraries from the library directory
-			allLibrairies, err := msgscript.ReadLibraryDirectory(libraryDir)
+			allLibrairies, err := script.ReadLibraryDirectory(libraryDir)
 			if err != nil {
 				return nil, fmt.Errorf("failed to read library directory: %v", err)
 			}

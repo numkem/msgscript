@@ -141,6 +141,9 @@
             nats-top
             pandoc
 
+            # wasm
+            tinygo
+
             # Server compose
             arion
 
