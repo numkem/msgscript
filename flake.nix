@@ -8,11 +8,14 @@
   outputs =
     { self, nixpkgs }:
     let
-      version = "0.3.3";
-      vendorHash = "sha256-fzewi3w2NYEVSDfar01w73UDH/zQ/Zt9Hspb8ZfjphQ=";
+      version = "0.4.0";
+      vendorHash = "sha256-pIDS1ejfz/sTuMTVMTscNG09PSw8wW5+KKeABOSwlms=";
 
       mkCli =
         pkgs:
+        let
+          wasmtime = pkgs.callPackage ./nix/pkgs/wasmtime.nix { };
+        in
         pkgs.buildGoModule {
           pname = "msgscript-cli";
           inherit version vendorHash;
@@ -21,6 +24,8 @@
 
           subPackages = [ "cmd/cli" ];
 
+          buildInputs = [ wasmtime.dev ];
+
           postInstall = ''
             mv $out/bin/cli $out/bin/msgscriptcli
           '';
@@ -28,6 +33,9 @@
 
       mkServer =
         pkgs:
+        let
+          wasmtime = pkgs.callPackage ./nix/pkgs/wasmtime.nix { };
+        in
         pkgs.buildGoModule {
           pname = "msgscript";
           inherit version vendorHash;
@@ -35,6 +43,8 @@
           src = self;
 
           subPackages = [ "cmd/server" ];
+
+          buildInputs = [ wasmtime.dev ];
 
           doCheck = false; # Requires networking, will just timeout
 
