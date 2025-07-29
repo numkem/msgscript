@@ -2,6 +2,7 @@ package executor
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"strings"
@@ -46,6 +47,7 @@ func (we *WasmExecutor) HandleMessage(ctx context.Context, msg *Message, replyFu
 		return
 	}
 
+	errs := make(chan error, len(scripts))
 	var wg sync.WaitGroup
 	r := NewReply()
 	for path, content := range scripts {
@@ -63,7 +65,7 @@ func (we *WasmExecutor) HandleMessage(ctx context.Context, msg *Message, replyFu
 
 			script, err := scriptLib.ReadString(string(content))
 			if err != nil {
-				log.WithFields(fields).Errorf("failed to read script: %v", err)
+				errs <- fmt.Errorf("failed to read script: %v", err)
 				return
 			}
 
@@ -72,38 +74,43 @@ func (we *WasmExecutor) HandleMessage(ctx context.Context, msg *Message, replyFu
 			// Script's content is the path to the wasm script
 			wasmBytes, err := os.ReadFile(modulePath)
 			if err != nil {
-				log.WithFields(fields).Errorf("failed to read wasm module file %s: %v", script.Content, err)
+				errs <- fmt.Errorf("failed to read wasm module file %s: %v", script.Content, err)
 				return
 			}
 
-			tmpFile, err := os.CreateTemp(os.TempDir(), "msgscript-wasm-stdout-*")
+			stdoutFile, err := createTempFile("msgscript-wasm-stdout-*")
 			if err != nil {
-				log.WithFields(fields).Errorf("failed to create temp file: %v", err)
+				errs <- fmt.Errorf("failed to create stdout temp file: %v", err)
 				return
 			}
-			defer os.Remove(tmpFile.Name())
-			defer tmpFile.Close()
+			defer os.Remove(stdoutFile.Name())
+			defer stdoutFile.Close()
+
+			stderrFile, err := createTempFile("msgscript-wasm-stderr-*")
+			if err != nil {
+				errs <- fmt.Errorf("failed to create stderr temp file: %v", err)
+				return
+			}
+			defer os.Remove(stderrFile.Name())
+			defer stderrFile.Close()
 
 			engine := wasmtime.NewEngine()
 			module, err := wasmtime.NewModule(engine, wasmBytes)
 			if err != nil {
-				log.WithFields(fields).Errorf("failed to create module: %v", err)
+				errs <- fmt.Errorf("failed to create module: %v", err)
 				return
 			}
 
 			linker := wasmtime.NewLinker(engine)
 			err = linker.DefineWasi()
 			if err != nil {
-				log.WithFields(fields).Errorf("failed to define WASI: %v", err)
+				errs <- fmt.Errorf("failed to define WASI: %v", err)
 				return
 			}
 
 			wasiConfig := wasmtime.NewWasiConfig()
-			err = wasiConfig.SetStdoutFile(tmpFile.Name())
-			if err != nil {
-				log.WithFields(fields).Errorf("failed to set wasi stdout to tmpFile %s: %v", tmpFile.Name(), err)
-				return
-			}
+			wasiConfig.SetStdoutFile(stdoutFile.Name())
+			wasiConfig.SetStderrFile(stderrFile.Name())
 			wasiConfig.SetEnv([]string{"SUBJECT", "PAYLOAD", "METHOD", "URL"}, []string{msg.Subject, string(msg.Payload), msg.Method, msg.URL})
 
 			store := wasmtime.NewStore(engine)
@@ -111,58 +118,92 @@ func (we *WasmExecutor) HandleMessage(ctx context.Context, msg *Message, replyFu
 
 			instance, err := linker.Instantiate(store, module)
 			if err != nil {
-				log.WithFields(fields).Errorf("failed to instantiate: %v", err)
+				errs <- fmt.Errorf("failed to instantiate: %v", err)
 				return
 			}
 
-			scrRes := new(ScriptResult)
+			// Standard WASI, will take what's in stdout as return value
+			log.WithFields(fields).Debug("running wasm module")
 			// Execute the main function of the WASM module
-			wasmFunc := instance.GetFunc(store, "_start")
-			if wasmFunc == nil {
-				log.WithFields(fields).Error("GET function not found")
+			scrRes, err := we.executeRawMessage(instance, store, stdoutFile)
+			if err != nil {
+				errs <- fmt.Errorf("failed to execute WASM module: %v", err)
+				return
+			}
+			log.WithFields(fields).Debug("finished running wasm module")
+
+			// Check stderr file. If there is something, we consider it as an error.
+			_, err = stderrFile.Seek(0, 0)
+			if err != nil {
+				errs <- fmt.Errorf("failed to seek in stderr temp file: %v", err)
 				return
 			}
 
-			log.WithFields(fields).Debug("calling wasm function")
-			_, err = wasmFunc.Call(store)
-			ec, _ := err.(*wasmtime.Error).ExitStatus()
-			if ec != 0 {
-				if err != nil {
-					log.WithFields(fields).Errorf("failed to call wasm module function: %v", err)
-					return
-				}
-			}
-			log.WithFields(fields).Debug("wasm function finished")
-
-			log.WithFields(fields).WithField("stdout_file", tmpFile.Name()).Debug("reading wasm stdout file")
-			tmpFile.Seek(0, 0)
-			output, err := io.ReadAll(tmpFile)
+			b, err := io.ReadAll(stderrFile)
 			if err != nil {
-				log.WithFields(fields).Errorf("failed to read tempFile %s after wasm execution: %v", tmpFile.Name(), err)
+				errs <- fmt.Errorf("failed to read stderr temp file: %v", err)
+				return
 			}
-			log.WithFields(fields).WithField("stdout_file", tmpFile.Name()).Debug("read stdout file")
-
-			log.WithFields(fields).Debug("decoding JSON output")
-			// Decode the returned reply
-			err = json.Unmarshal(output, scrRes)
-			if err != nil {
-				// If we can't decode the return value, we take it as is
-				scrRes.Payload = output
+			if len(b) > 0 {
+				scrRes.Error = string(b)
 			}
 
-			log.WithFields(fields).Debug("finished running wasm module")
 			r.Results.Store(script.Name, scrRes)
 			log.WithFields(fields).Debug("stored result")
 		}(content)
 	}
-
 	wg.Wait()
 	log.WithField("subject", msg.Subject).Debugf("finished running %d scripts", len(scripts))
 
+	close(errs)
+	for e := range errs {
+		r.Error = r.Error + " " + e.Error()
+	}
+
 	replyFunc(r)
+}
+
+func (*WasmExecutor) executeRawMessage(instance *wasmtime.Instance, store *wasmtime.Store, tmpFile *os.File) (*ScriptResult, error) {
+	wasmFunc := instance.GetFunc(store, "_start")
+	if wasmFunc == nil {
+		return nil, fmt.Errorf("GET function not found")
+	}
+
+	_, err := wasmFunc.Call(store)
+	ec, _ := err.(*wasmtime.Error).ExitStatus()
+	if ec != 0 {
+		if err != nil {
+			return nil, fmt.Errorf("failed to call wasm module function: %v", err)
+		}
+	}
+
+	tmpFile.Seek(0, 0)
+	output, err := io.ReadAll(tmpFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read tempFile %s after wasm execution: %v", tmpFile.Name(), err)
+	}
+
+	scrRes := new(ScriptResult)
+	// Decode the returned reply
+	err = json.Unmarshal(output, scrRes)
+	if err != nil {
+		// If we can't decode the return value, we take it as is
+		scrRes.Payload = output
+	}
+
+	return scrRes, nil
 }
 
 func (we *WasmExecutor) Stop() {
 	we.cancelFunc()
 	log.Debug("WasmExecutor stopped")
+}
+
+func createTempFile(pattern string) (*os.File, error) {
+	tmpFile, err := os.CreateTemp(os.TempDir(), pattern)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create temp file: %v", err)
+	}
+
+	return tmpFile, nil
 }
