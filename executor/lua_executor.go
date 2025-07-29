@@ -11,14 +11,15 @@ import (
 	"github.com/cjoudrey/gluahttp"
 	luajson "github.com/layeh/gopher-json"
 	"github.com/nats-io/nats.go"
-	luamodules "github.com/numkem/msgscript/lua"
-	msgplugins "github.com/numkem/msgscript/plugins"
-	scriptLib "github.com/numkem/msgscript/script"
-	msgstore "github.com/numkem/msgscript/store"
 	log "github.com/sirupsen/logrus"
 	"github.com/yuin/gluare"
 	lua "github.com/yuin/gopher-lua"
 	lfs "layeh.com/gopher-lfs"
+
+	luamodules "github.com/numkem/msgscript/lua"
+	msgplugins "github.com/numkem/msgscript/plugins"
+	scriptLib "github.com/numkem/msgscript/script"
+	msgstore "github.com/numkem/msgscript/store"
 )
 
 // LuaExecutor defines the structure responsible for managing Lua script execution
