@@ -62,6 +62,7 @@ func (le *LuaExecutor) HandleMessage(ctx context.Context, msg *Message, replyFun
 		return
 	}
 
+	errs := make(chan error, len(scripts))
 	var wg sync.WaitGroup
 	r := NewReply()
 	// Loop through each scripts attached to the subject as there might be more than one
@@ -72,43 +73,44 @@ func (le *LuaExecutor) HandleMessage(ctx context.Context, msg *Message, replyFun
 		name := ss[len(ss)-1]
 		fields["path"] = name
 
-		tmp, err := os.MkdirTemp(os.TempDir(), fmt.Sprintf("msgscript-%s-%s", msg.Subject, name))
-		if err != nil {
-			log.WithFields(fields).Errorf("failed to create temp directory: %v", err)
-			return
-		}
-		defer os.RemoveAll(tmp)
-
 		// Run the Lua script in a separate goroutine to handle the message for each script
 		go func(content []byte) {
 			defer wg.Done()
-			err := os.Chdir(tmp)
+
+			tmp, err := os.MkdirTemp(os.TempDir(), "msgscript-lua-*s")
 			if err != nil {
-				log.WithFields(fields).Errorf("failed to change to temp directory %s: %v", tmp, err)
+				errs <- fmt.Errorf("failed to create temp directory: %v", err)
+				return
+			}
+			defer os.RemoveAll(tmp)
+
+			err = os.Chdir(tmp)
+			if err != nil {
+				errs <- fmt.Errorf("failed to change to temp directory %s: %v", tmp, err)
+				return
 			}
 
 			// Read the script to get the headers (for the libraries for example)
 			s, err := scriptLib.ReadString(string(content))
 			if err != nil {
-				log.WithFields(fields).Errorf("failed to read script: %v", err)
+				errs <- fmt.Errorf("failed to read script: %v", err)
 				return
 			}
 
 			libs, err := le.store.LoadLibrairies(ctx, s.LibKeys)
 			if err != nil {
-				log.WithFields(fields).Errorf("failed to read librairies: %v", err)
+				errs <- fmt.Errorf("failed to read librairies: %v", err)
 				return
 			}
 
 			locked, err := le.store.TakeLock(ctx, name)
 			if err != nil {
 				log.WithFields(fields).Debugf("failed to get lock: %v", err)
-				log.WithFields(fields).Debug("bailing out")
 				return
 			}
 
 			if !locked {
-				log.WithFields(fields).Debug("We don't have a lock, giving up")
+				log.WithFields(fields).Debug("we don't have a lock, giving up")
 				return
 			}
 			defer le.store.ReleaseLock(ctx, name)
@@ -133,7 +135,7 @@ func (le *LuaExecutor) HandleMessage(ctx context.Context, msg *Message, replyFun
 			if le.plugins != nil {
 				err = msgplugins.LoadPlugins(L, le.plugins)
 				if err != nil {
-					log.Errorf("failed to load plugin: %v", err)
+					errs <- fmt.Errorf("failed to load plugin: %v", err)
 					return
 				}
 			}
@@ -175,9 +177,13 @@ func (le *LuaExecutor) HandleMessage(ctx context.Context, msg *Message, replyFun
 			}
 		}(script)
 	}
-
 	wg.Wait()
 	log.WithField("subject", msg.Subject).Debugf("finished running %d scripts", len(scripts))
+
+	close(errs)
+	for e := range errs {
+		r.Error = r.Error + " " + e.Error()
+	}
 
 	replyFunc(r)
 }
