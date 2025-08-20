@@ -57,7 +57,7 @@ func NewEtcdScriptStore(endpoints string) (*EtcdScriptStore, error) {
 
 	client, err := EtcdClient(endpoints)
 	if err != nil {
-		return nil, fmt.Errorf("failed to connect to etcd: %v", err)
+		return nil, fmt.Errorf("failed to connect to etcd: %w", err)
 	}
 
 	log.Debugf("Connected to etcd @ %s", strings.Join(client.Endpoints(), ","))
@@ -80,7 +80,7 @@ func (e *EtcdScriptStore) AddScript(ctx context.Context, subject, name string, s
 	// Store script in etcd
 	_, err := e.client.Put(ctx, key, string(script))
 	if err != nil {
-		return fmt.Errorf("failed to add script for subject '%s': %v", subject, err)
+		return fmt.Errorf("failed to add script for subject '%s': %w", subject, err)
 	}
 
 	log.Debugf("Script added for subject %s named %s", subject, name)
@@ -94,7 +94,7 @@ func (e *EtcdScriptStore) GetScripts(ctx context.Context, subject string) (map[s
 	// Fetch all scripts under the subject's prefix
 	resp, err := e.client.Get(ctx, keyPrefix, clientv3.WithPrefix())
 	if err != nil {
-		return nil, fmt.Errorf("failed to get scripts for subject '%s': %v", subject, err)
+		return nil, fmt.Errorf("failed to get scripts for subject '%s': %w", subject, err)
 	}
 
 	scripts := make(map[string][]byte)
@@ -113,7 +113,7 @@ func (e *EtcdScriptStore) DeleteScript(ctx context.Context, subject, name string
 	// Delete script from etcd
 	_, err := e.client.Delete(ctx, key)
 	if err != nil {
-		return fmt.Errorf("failed to delete script for subject '%s' with ID '%s': %v", subject, name, err)
+		return fmt.Errorf("failed to delete script for subject '%s' with ID '%s': %w", subject, name, err)
 	}
 
 	log.Debugf("Deleted script for subject %s with ID %s", subject, name)
@@ -145,7 +145,7 @@ func (e *EtcdScriptStore) acquireLock(ctx context.Context, lockKey string, ttl i
 	// Create a lease
 	sess, err := concurrency.NewSession(e.client, concurrency.WithTTL(ttl), concurrency.WithContext(ctx))
 	if err != nil {
-		return nil, fmt.Errorf("failed to create session: %v", err)
+		return nil, fmt.Errorf("failed to create session: %w", err)
 	}
 	fields := log.Fields{
 		"lockKey": lockKey,
@@ -181,7 +181,7 @@ func (e *EtcdScriptStore) ReleaseLock(ctx context.Context, path string) error {
 	l := v.(*lock)
 	err := l.Mutex.Unlock(ctx)
 	if err != nil {
-		return fmt.Errorf("etcdStore: failed to release lock: %v", err)
+		return fmt.Errorf("etcdStore: failed to release lock: %w", err)
 	}
 	log.WithFields(fields).Debug("etcdStore: Released the lock")
 
@@ -205,7 +205,7 @@ func (e *EtcdScriptStore) TakeLock(ctx context.Context, path string) (bool, erro
 			return false, fmt.Errorf("already locked")
 		}
 
-		return false, fmt.Errorf("failed to get lock on key %s: %v", lockKey, err)
+		return false, fmt.Errorf("failed to get lock on key %s: %w", lockKey, err)
 	}
 
 	// Remove the mutex from the map after 1 second more than the session's TTL in case it's never unlocked
@@ -225,7 +225,7 @@ func (e *EtcdScriptStore) TakeLock(ctx context.Context, path string) (bool, erro
 func (e *EtcdScriptStore) ListSubjects(ctx context.Context) ([]string, error) {
 	resp, err := e.client.KV.Get(ctx, ETCD_SCRIPT_KEY_PREFIX, clientv3.WithPrefix())
 	if err != nil {
-		return nil, fmt.Errorf("failed to list keys: %v", err)
+		return nil, fmt.Errorf("failed to list keys: %w", err)
 	}
 
 	var subjects []string
@@ -244,7 +244,7 @@ func (e *EtcdScriptStore) LoadLibrairies(ctx context.Context, libraryPaths []str
 
 		resp, err := e.client.Get(ctx, key)
 		if err != nil {
-			return nil, fmt.Errorf("failed to read key %s: %v", key, err)
+			return nil, fmt.Errorf("failed to read key %s: %w", key, err)
 		}
 
 		if len(resp.Kvs) != 1 {
@@ -261,7 +261,7 @@ func (e *EtcdScriptStore) AddLibrary(ctx context.Context, content []byte, path s
 	key := strings.Join([]string{ETCD_LIBRARY_KEY_PREFIX, path}, "/")
 	_, err := e.client.Put(ctx, key, string(content))
 	if err != nil {
-		return fmt.Errorf("failed to store library key %s: %v", key, err)
+		return fmt.Errorf("failed to store library key %s: %w", key, err)
 	}
 
 	return nil
@@ -271,7 +271,7 @@ func (e *EtcdScriptStore) RemoveLibrary(ctx context.Context, path string) error 
 	key := strings.Join([]string{ETCD_LIBRARY_KEY_PREFIX, path}, "/")
 	_, err := e.client.Delete(ctx, key)
 	if err != nil {
-		return fmt.Errorf("failed to delete library key %s: %v", key, err)
+		return fmt.Errorf("failed to delete library key %s: %w", key, err)
 	}
 
 	return nil

@@ -7,7 +7,10 @@ import (
 	"io/fs"
 	"os"
 	"path"
+	"strconv"
 	"strings"
+
+	"log" "github.com/sirupsen/logrus"
 )
 
 const (
@@ -27,13 +30,13 @@ type Script struct {
 func ReadFile(filename string) (*Script, error) {
 	f, err := os.Open(filename)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open file %s: %v", filename, err)
+		return nil, fmt.Errorf("failed to open file %s: %w", filename, err)
 	}
 
 	s := new(Script)
 	err = s.Read(f)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read file %s: %v", filename, err)
+		return nil, fmt.Errorf("failed to read file %s: %w", filename, err)
 	}
 
 	return s, nil
@@ -45,7 +48,7 @@ func ReadString(content string) (*Script, error) {
 
 	err := s.Read(r)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read string content: %v", err)
+		return nil, fmt.Errorf("failed to read string content: %w", err)
 	}
 
 	return s, nil
@@ -77,6 +80,7 @@ func headerKey(key string) string {
 
 func (s *Script) Read(f io.Reader) error {
 	scanner := bufio.NewScanner(f)
+	var err error
 	var b strings.Builder
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -91,13 +95,16 @@ func (s *Script) Read(f io.Reader) error {
 		case "require":
 			s.LibKeys = append(s.LibKeys, v)
 		case "html":
-			s.HTML = true
+			s.HTML, err = strconv.ParseBool(v)
+			if err != nil {
+				s.HTML = false
+			}
 		case "executor":
 			s.Executor = v
 		default:
 			_, err := b.WriteString(line + "\n")
 			if err != nil {
-				return fmt.Errorf("failed to write to builder: %v", err)
+				return fmt.Errorf("failed to write to builder: %w", err)
 			}
 		}
 	}
@@ -127,7 +134,7 @@ func ReadScriptDirectory(dirname string, recurse bool) (map[string]map[string]*S
 
 				s, err := ReadFile(fullname)
 				if err != nil {
-					return fmt.Errorf("failed to read script %s: %v", fullname, err)
+					return fmt.Errorf("failed to read script %s: %w", fullname, err)
 				}
 
 				if s.Subject == "" {
@@ -148,12 +155,12 @@ func ReadScriptDirectory(dirname string, recurse bool) (map[string]map[string]*S
 			return nil
 		})
 		if err != nil {
-			return nil, fmt.Errorf("failed to walk directory %s: %v", dirname, err)
+			return nil, fmt.Errorf("failed to walk directory %s: %w", dirname, err)
 		}
 	} else {
 		entries, err := os.ReadDir(dirname)
 		if err != nil {
-			return nil, fmt.Errorf("failed to read directory: %v", err)
+			return nil, fmt.Errorf("failed to read directory: %w", err)
 		}
 
 		for _, e := range entries {
@@ -162,7 +169,7 @@ func ReadScriptDirectory(dirname string, recurse bool) (map[string]map[string]*S
 
 				s, err := ReadFile(fullname)
 				if err != nil {
-					return nil, fmt.Errorf("failed to read script %s: %v", fullname, err)
+					return nil, fmt.Errorf("failed to read script %s: %w", fullname, err)
 				}
 
 				// Add the script to the map
@@ -182,7 +189,7 @@ func ReadLibraryDirectory(dirname string) ([]*Script, error) {
 	var libraries []*Script
 	entries, err := os.ReadDir(dirname)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read directory: %v", err)
+		return nil, fmt.Errorf("failed to read directory: %w", err)
 	}
 
 	for _, e := range entries {
@@ -191,7 +198,7 @@ func ReadLibraryDirectory(dirname string) ([]*Script, error) {
 
 			s, err := ReadFile(fullname)
 			if err != nil {
-				return nil, fmt.Errorf("failed to read script %s: %v", fullname, err)
+				return nil, fmt.Errorf("failed to read script %s: %w", fullname, err)
 			}
 
 			// Add the script to the map

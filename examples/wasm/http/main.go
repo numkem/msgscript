@@ -35,7 +35,7 @@ func main() {
 
 	err := json.NewEncoder(os.Stdout).Encode(result)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to encode result: %v", err)
+		fmt.Fprintf(os.Stderr, "failed to encode result: %w", err)
 	}
 
 	os.Exit(0)

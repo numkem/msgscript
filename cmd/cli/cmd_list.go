@@ -23,14 +23,14 @@ func init() {
 func listCmdRun(cmd *cobra.Command, args []string) {
 	scriptStore, err := msgstore.StoreByName(cmd.Flag("backend").Value.String(), cmd.Flag("etcdurls").Value.String(), "", "")
 	if err != nil {
-		cmd.PrintErrf("failed to get script store: %v", err)
+		cmd.PrintErrf("failed to get script store: %w", err)
 		return
 	}
 
 	subjectScriptNames := make(map[string][]string)
 	subjects, err := scriptStore.ListSubjects(cmd.Context())
 	if err != nil {
-		cmd.PrintErrf("failed to get subjects from store: %v", err)
+		cmd.PrintErrf("failed to get subjects from store: %w", err)
 		return
 	}
 
@@ -42,7 +42,7 @@ func listCmdRun(cmd *cobra.Command, args []string) {
 	for _, subject := range subjects {
 		scripts, err := scriptStore.GetScripts(cmd.Context(), subject)
 		if err != nil {
-			cmd.PrintErrf("failed to get scripts for subject %s: %v", subject, err)
+			cmd.PrintErrf("failed to get scripts for subject %s: %w", subject, err)
 			return
 		}
 

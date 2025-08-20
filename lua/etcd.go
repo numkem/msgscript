@@ -18,7 +18,7 @@ func PreloadEtcd(L *lua.LState) {
 func etcdLoader(L *lua.LState) int {
 	c, err := msgstore.EtcdClient("127.0.0.1:2379") // Set a default value
 	if err != nil {
-		log.WithField("endpoints", os.Getenv("ETCD_ENDPOINTS")).Errorf("failed to connect to etcd: %v", err)
+		log.WithField("endpoints", os.Getenv("ETCD_ENDPOINTS")).Errorf("failed to connect to etcd: %w", err)
 	}
 	l := luaEtcd{client: c}
 

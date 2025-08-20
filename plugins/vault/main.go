@@ -44,7 +44,7 @@ func new(L *lua.LState) int {
 	v, err := newVaultKVLuaClient(address, token, fromEnv)
 	if err != nil {
 		L.Push(lua.LNil)
-		L.Push(lua.LString(fmt.Sprintf("failed to create new vault client: %v", err)))
+		L.Push(lua.LString(fmt.Sprintf("failed to create new vault client: %s", err)))
 		return 2
 	}
 
@@ -76,7 +76,7 @@ func newVaultKVLuaClient(address, token string, fromEnv bool) (*vaultKVLuaClient
 
 	client, err := vaultapi.NewClient(config)
 	if err != nil {
-		return nil, fmt.Errorf("failed to connect to vault: %v", err)
+		return nil, fmt.Errorf("failed to connect to vault: %w", err)
 	}
 
 	if fromEnv {
@@ -101,13 +101,13 @@ func write(L *lua.LState) int {
 		data[k.String()] = v.String()
 
 		if k.Type().String() != "string" {
-			log.WithField("plugin", "vault").Errorf("unsupported type in read data: %v", k.Type().String())
+			log.WithField("plugin", "vault").Errorf("unsupported type in read data: %w", k.Type().String())
 		}
 	})
 
 	_, err := c.client.Logical().Write(fmt.Sprintf("%s/data%s", mountPath, path), map[string]interface{}{"data": data})
 	if err != nil {
-		L.Push(lua.LString(fmt.Sprintf("failed to write to %s: %v", path, err)))
+		L.Push(lua.LString(fmt.Sprintf("failed to write to %s: %w", path, err)))
 		return 1
 	}
 
@@ -123,7 +123,7 @@ func read(L *lua.LState) int {
 	s, err := c.client.Logical().Read(fmt.Sprintf("%s/data%s", mountPath, path))
 	if err != nil {
 		L.Push(lua.LNil)
-		L.Push(lua.LString(fmt.Sprintf("failed to read path %s: %v", path, err)))
+		L.Push(lua.LString(fmt.Sprintf("failed to read path %s: %w", path, err)))
 		return 2
 	}
 
@@ -134,7 +134,7 @@ func read(L *lua.LState) int {
 	}
 
 	t := L.NewTable()
-	for k, v := range s.Data["data"].(map[string]interface{}) {
+	for k, v := range s.Data["data"].(map[string]any) {
 		t.RawSetString(k, lua.LString(v.(string)))
 	}
 
@@ -150,7 +150,7 @@ func delete(L *lua.LState) int {
 
 	_, err := c.client.Logical().Delete(fmt.Sprintf("%s/metadata%s", mountPath, path))
 	if err != nil {
-		L.Push(lua.LString(fmt.Sprintf("failed to delete %s: %v", path, err)))
+		L.Push(lua.LString(fmt.Sprintf("failed to delete %s: %s", path, err)))
 		return 1
 	}
 
@@ -166,12 +166,12 @@ func list(L *lua.LState) int {
 	s, err := c.client.Logical().List(fmt.Sprintf("%s/metadata%s", mountPath, path))
 	if err != nil {
 		L.Push(lua.LNil)
-		L.Push(lua.LString(fmt.Sprintf("failed to list %s: %v", path, err)))
+		L.Push(lua.LString(fmt.Sprintf("failed to list %s: %s", path, err)))
 		return 2
 	}
 
 	l := L.NewTable()
-	for _, k := range s.Data["keys"].([]interface{}) {
+	for _, k := range s.Data["keys"].([]any) {
 		l.Append(lua.LString(k.(string)))
 	}
 

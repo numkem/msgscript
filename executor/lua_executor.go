@@ -80,33 +80,33 @@ func (le *LuaExecutor) HandleMessage(ctx context.Context, msg *Message, replyFun
 
 			tmp, err := os.MkdirTemp(os.TempDir(), "msgscript-lua-*s")
 			if err != nil {
-				errs <- fmt.Errorf("failed to create temp directory: %v", err)
+				errs <- fmt.Errorf("failed to create temp directory: %w", err)
 				return
 			}
 			defer os.RemoveAll(tmp)
 
 			err = os.Chdir(tmp)
 			if err != nil {
-				errs <- fmt.Errorf("failed to change to temp directory %s: %v", tmp, err)
+				errs <- fmt.Errorf("failed to change to temp directory %s: %w", tmp, err)
 				return
 			}
 
 			// Read the script to get the headers (for the libraries for example)
 			s, err := scriptLib.ReadString(string(content))
 			if err != nil {
-				errs <- fmt.Errorf("failed to read script: %v", err)
+				errs <- fmt.Errorf("failed to read script: %w", err)
 				return
 			}
 
 			libs, err := le.store.LoadLibrairies(ctx, s.LibKeys)
 			if err != nil {
-				errs <- fmt.Errorf("failed to read librairies: %v", err)
+				errs <- fmt.Errorf("failed to read librairies: %w", err)
 				return
 			}
 
 			locked, err := le.store.TakeLock(ctx, name)
 			if err != nil {
-				log.WithFields(fields).Debugf("failed to get lock: %v", err)
+				log.WithFields(fields).Debugf("failed to get lock: %w", err)
 				return
 			}
 
@@ -136,7 +136,7 @@ func (le *LuaExecutor) HandleMessage(ctx context.Context, msg *Message, replyFun
 			if le.plugins != nil {
 				err = msgplugins.LoadPlugins(L, le.plugins)
 				if err != nil {
-					errs <- fmt.Errorf("failed to load plugin: %v", err)
+					errs <- fmt.Errorf("failed to load plugin: %w", err)
 					return
 				}
 			}
@@ -154,7 +154,7 @@ func (le *LuaExecutor) HandleMessage(ctx context.Context, msg *Message, replyFun
 				Headers: make(map[string]string),
 			}
 			if err := L.DoString(sb.String()); err != nil {
-				msg := fmt.Sprintf("error parsing Lua script: %v", err)
+				msg := fmt.Sprintf("error parsing Lua script: %w", err)
 				log.WithFields(fields).Errorf(msg)
 				res.Error = err.Error()
 				r.Results.Store(name, res)
@@ -198,7 +198,7 @@ func (*LuaExecutor) executeHTMLMessage(fields log.Fields, L *lua.LState, msg *Me
 			NRet:    3,
 			Protect: true,
 		}, lua.LString(msg.URL), lua.LString(string(msg.Payload))); err != nil {
-			reply.Error = fmt.Errorf("failed to call %s function: %v", msg.Method, err).Error()
+			reply.Error = fmt.Errorf("failed to call %s function: %w", msg.Method, err).Error()
 			return
 		}
 	}
@@ -244,7 +244,7 @@ func (*LuaExecutor) executeRawMessage(fields log.Fields, L *lua.LState, reply *R
 		Protect: true,
 	}, lua.LString(msg.Subject), lua.LString(string(msg.Payload)))
 	if err != nil {
-		reply.Error = fmt.Errorf("failed to call OnMessage function: %v", err).Error()
+		reply.Error = fmt.Errorf("failed to call OnMessage function: %w", err).Error()
 		return
 	}
 

@@ -37,7 +37,7 @@ func (we *WasmExecutor) HandleMessage(ctx context.Context, msg *Message, replyFu
 	// Look up the Lua script for the given subject
 	scripts, err := we.store.GetScripts(ctx, msg.Subject)
 	if err != nil {
-		log.Errorf("failed to get scripts for subject %s: %v", msg.Subject, err)
+		log.Errorf("failed to get scripts for subject %s: %w", msg.Subject, err)
 		return
 	}
 
@@ -65,7 +65,7 @@ func (we *WasmExecutor) HandleMessage(ctx context.Context, msg *Message, replyFu
 
 			script, err := scriptLib.ReadString(string(content))
 			if err != nil {
-				errs <- fmt.Errorf("failed to read script: %v", err)
+				errs <- fmt.Errorf("failed to read script: %w", err)
 				return
 			}
 
@@ -74,13 +74,13 @@ func (we *WasmExecutor) HandleMessage(ctx context.Context, msg *Message, replyFu
 			// Script's content is the path to the wasm script
 			wasmBytes, err := os.ReadFile(modulePath)
 			if err != nil {
-				errs <- fmt.Errorf("failed to read wasm module file %s: %v", script.Content, err)
+				errs <- fmt.Errorf("failed to read wasm module file %s: %w", script.Content, err)
 				return
 			}
 
 			stdoutFile, err := createTempFile("msgscript-wasm-stdout-*")
 			if err != nil {
-				errs <- fmt.Errorf("failed to create stdout temp file: %v", err)
+				errs <- fmt.Errorf("failed to create stdout temp file: %w", err)
 				return
 			}
 			defer os.Remove(stdoutFile.Name())
@@ -88,7 +88,7 @@ func (we *WasmExecutor) HandleMessage(ctx context.Context, msg *Message, replyFu
 
 			stderrFile, err := createTempFile("msgscript-wasm-stderr-*")
 			if err != nil {
-				errs <- fmt.Errorf("failed to create stderr temp file: %v", err)
+				errs <- fmt.Errorf("failed to create stderr temp file: %w", err)
 				return
 			}
 			defer os.Remove(stderrFile.Name())
@@ -97,14 +97,14 @@ func (we *WasmExecutor) HandleMessage(ctx context.Context, msg *Message, replyFu
 			engine := wasmtime.NewEngine()
 			module, err := wasmtime.NewModule(engine, wasmBytes)
 			if err != nil {
-				errs <- fmt.Errorf("failed to create module: %v", err)
+				errs <- fmt.Errorf("failed to create module: %w", err)
 				return
 			}
 
 			linker := wasmtime.NewLinker(engine)
 			err = linker.DefineWasi()
 			if err != nil {
-				errs <- fmt.Errorf("failed to define WASI: %v", err)
+				errs <- fmt.Errorf("failed to define WASI: %w", err)
 				return
 			}
 
@@ -118,7 +118,7 @@ func (we *WasmExecutor) HandleMessage(ctx context.Context, msg *Message, replyFu
 
 			instance, err := linker.Instantiate(store, module)
 			if err != nil {
-				errs <- fmt.Errorf("failed to instantiate: %v", err)
+				errs <- fmt.Errorf("failed to instantiate: %w", err)
 				return
 			}
 
@@ -127,7 +127,7 @@ func (we *WasmExecutor) HandleMessage(ctx context.Context, msg *Message, replyFu
 			// Execute the main function of the WASM module
 			scrRes, err := we.executeRawMessage(instance, store, stdoutFile)
 			if err != nil {
-				errs <- fmt.Errorf("failed to execute WASM module: %v", err)
+				errs <- fmt.Errorf("failed to execute WASM module: %w", err)
 				return
 			}
 			log.WithFields(fields).Debug("finished running wasm module")
@@ -135,13 +135,13 @@ func (we *WasmExecutor) HandleMessage(ctx context.Context, msg *Message, replyFu
 			// Check stderr file. If there is something, we consider it as an error.
 			_, err = stderrFile.Seek(0, 0)
 			if err != nil {
-				errs <- fmt.Errorf("failed to seek in stderr temp file: %v", err)
+				errs <- fmt.Errorf("failed to seek in stderr temp file: %w", err)
 				return
 			}
 
 			b, err := io.ReadAll(stderrFile)
 			if err != nil {
-				errs <- fmt.Errorf("failed to read stderr temp file: %v", err)
+				errs <- fmt.Errorf("failed to read stderr temp file: %w", err)
 				return
 			}
 			if len(b) > 0 {
@@ -173,14 +173,14 @@ func (*WasmExecutor) executeRawMessage(instance *wasmtime.Instance, store *wasmt
 	ec, _ := err.(*wasmtime.Error).ExitStatus()
 	if ec != 0 {
 		if err != nil {
-			return nil, fmt.Errorf("failed to call wasm module function: %v", err)
+			return nil, fmt.Errorf("failed to call wasm module function: %w", err)
 		}
 	}
 
 	tmpFile.Seek(0, 0)
 	output, err := io.ReadAll(tmpFile)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read tempFile %s after wasm execution: %v", tmpFile.Name(), err)
+		return nil, fmt.Errorf("failed to read tempFile %s after wasm execution: %w", tmpFile.Name(), err)
 	}
 
 	scrRes := new(ScriptResult)

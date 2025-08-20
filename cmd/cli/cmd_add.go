@@ -16,7 +16,7 @@ func validateArgIsPath(cmd *cobra.Command, args []string) error {
 	}
 
 	if _, err := os.Stat(args[0]); err != nil {
-		return fmt.Errorf("invalid filename %s: %v", args[0], err)
+		return fmt.Errorf("invalid filename %s: %w", args[0], err)
 	}
 
 	return nil
@@ -39,7 +39,7 @@ func init() {
 func addCmdRun(cmd *cobra.Command, args []string) {
 	scriptStore, err := msgstore.StoreByName(cmd.Flag("backend").Value.String(), cmd.Flag("etcdurls").Value.String(), "", "")
 	if err != nil {
-		cmd.PrintErrf("failed to get script store: %v", err)
+		cmd.PrintErrf("failed to get script store: %w", err)
 		return
 	}
 	subject := cmd.Flag("subject").Value.String()
@@ -48,7 +48,7 @@ func addCmdRun(cmd *cobra.Command, args []string) {
 	// Try to read the file to see if we can find headers
 	s, err := scriptLib.ReadFile(args[0])
 	if err != nil {
-		cmd.PrintErrf("failed to read the script file %s: %v", args[0], err)
+		cmd.PrintErrf("failed to read the script file %s: %w", args[0], err)
 		return
 	}
 	if subject == "" {
@@ -71,7 +71,7 @@ func addCmdRun(cmd *cobra.Command, args []string) {
 	// Add the script to etcd under the given subject
 	err = scriptStore.AddScript(cmd.Context(), subject, name, s.Content)
 	if err != nil {
-		cmd.PrintErrf("Failed to add script to etcd: %v", err)
+		cmd.PrintErrf("Failed to add script to etcd: %w", err)
 		return
 	}
 

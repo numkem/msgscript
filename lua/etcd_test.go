@@ -16,7 +16,7 @@ import (
 func testingEtcdClient() *clientv3.Client {
 	client, err := store.EtcdClient("127.0.0.1:2379")
 	if err != nil {
-		log.Errorf("failed to connect to etcd: %v", err)
+		log.Errorf("failed to connect to etcd: %w", err)
 	}
 
 	return client
@@ -119,6 +119,6 @@ assert(err == nil)
 func teardown() {
 	_, err := testingEtcdClient().Delete(context.Background(), "msgscript/test", clientv3.WithPrefix())
 	if err != nil {
-		log.Fatalf("failed to delete etcd testing keys: %v", err)
+		log.Fatalf("failed to delete etcd testing keys: %w", err)
 	}
 }

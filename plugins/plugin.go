@@ -16,7 +16,7 @@ type PreloadFunc func(L *lua.LState, envs map[string]string)
 func ReadPluginDir(dirpath string) ([]PreloadFunc, error) {
 	entries, err := os.ReadDir(dirpath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read plugin directory %s: %v", dirpath, err)
+		return nil, fmt.Errorf("failed to read plugin directory %s: %w", dirpath, err)
 	}
 
 	var readPlugins []PreloadFunc
@@ -32,12 +32,12 @@ func ReadPluginDir(dirpath string) ([]PreloadFunc, error) {
 		fullPath := filepath.Join(dirpath, entry.Name())
 		p, err := plugin.Open(fullPath)
 		if err != nil {
-			return nil, fmt.Errorf("failed to open plugin file %s: %v", fullPath, err)
+			return nil, fmt.Errorf("failed to open plugin file %s: %w", fullPath, err)
 		}
 
 		symPreload, err := p.Lookup("Preload")
 		if err != nil {
-			return nil, fmt.Errorf("failed to find Plugin symbol: %v", err)
+			return nil, fmt.Errorf("failed to find Plugin symbol: %w", err)
 		}
 
 		mp, ok := symPreload.(func(*lua.LState, map[string]string))

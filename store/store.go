@@ -35,7 +35,7 @@ func StoreByName(name, etcdEndpoints, scriptDir, libraryDir string) (ScriptStore
 	case BACKEND_ETCD_NAME:
 		scriptStore, err := NewEtcdScriptStore(etcdEndpoints)
 		if err != nil {
-			return nil, fmt.Errorf("Failed to initialize etcd store: %v", err)
+			return nil, fmt.Errorf("Failed to initialize etcd store: %w", err)
 		}
 
 		return scriptStore, nil
@@ -53,13 +53,13 @@ func StoreByName(name, etcdEndpoints, scriptDir, libraryDir string) (ScriptStore
 
 		scriptStore, err := NewFileScriptStore(scriptDir, libraryDir)
 		if err != nil {
-			return nil, fmt.Errorf("failed to initialize file store: %v", err)
+			return nil, fmt.Errorf("failed to initialize file store: %w", err)
 		}
 
 		// Read all the scripts from the scripts directory and add them to the store
 		allScripts, err := script.ReadScriptDirectory(scriptDir, false)
 		if err != nil {
-			return nil, fmt.Errorf("failed to read scripts: %v", err)
+			return nil, fmt.Errorf("failed to read scripts: %w", err)
 		}
 
 		var nbScripts int
@@ -76,7 +76,7 @@ func StoreByName(name, etcdEndpoints, scriptDir, libraryDir string) (ScriptStore
 			// Read libraries from the library directory
 			allLibrairies, err := script.ReadLibraryDirectory(libraryDir)
 			if err != nil {
-				return nil, fmt.Errorf("failed to read library directory: %v", err)
+				return nil, fmt.Errorf("failed to read library directory: %w", err)
 			}
 
 			var nbLibraries int

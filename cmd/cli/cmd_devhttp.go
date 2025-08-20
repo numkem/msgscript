@@ -39,7 +39,7 @@ func init() {
 func devHttpCmdRun(cmd *cobra.Command, args []string) {
 	store, err := store.NewDevStore(cmd.Flag("library").Value.String())
 	if err != nil {
-		cmd.PrintErrf("failed to create store: %v\n", err)
+		cmd.PrintErrf("failed to create store: %w\n", err)
 		return
 	}
 
@@ -47,7 +47,7 @@ func devHttpCmdRun(cmd *cobra.Command, args []string) {
 	if path := cmd.Flag("pluginDir").Value.String(); path != "" {
 		plugins, err = msgplugin.ReadPluginDir(path)
 		if err != nil {
-			cmd.PrintErrf("failed to read plugins: %v\n", err)
+			cmd.PrintErrf("failed to read plugins: %w\n", err)
 			return
 		}
 	}
@@ -68,13 +68,13 @@ func devHttpCmdRun(cmd *cobra.Command, args []string) {
 
 	fullpath, err := filepath.Abs(args[0])
 	if err != nil {
-		cmd.PrintErrf("failed to get absolute path for file %s: %v", args[0], err)
+		cmd.PrintErrf("failed to get absolute path for file %s: %w", args[0], err)
 		return
 	}
 
 	fullLibraryDir, err := filepath.Abs(cmd.Flag("library").Value.String())
 	if err != nil {
-		cmd.PrintErrf("failed to get absolute path for library folder: %v", err)
+		cmd.PrintErrf("failed to get absolute path for library folder: %w", err)
 		return
 	}
 
@@ -130,21 +130,21 @@ func (p *devHttpProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	payload, err := io.ReadAll(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, "failed to read request body: %v", err)
+		fmt.Fprintf(w, "failed to read request body: %w", err)
 		return
 	}
 
 	// Load script from disk
 	s, err := scriptLib.ReadFile(p.scriptFile)
 	if err != nil {
-		log.WithField("filename", p.scriptFile).Errorf("failed to read file: %v", err)
+		log.WithField("filename", p.scriptFile).Errorf("failed to read file: %w", err)
 		return
 	}
 
 	// TODO: load/delete libraries
 	libs, err := parseDirsForLibraries([]string{p.libraryDir}, true)
 	if err != nil {
-		e := fmt.Errorf("failed to read librairies: %v", err)
+		e := fmt.Errorf("failed to read librairies: %w", err)
 		log.Error(e.Error())
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(e.Error()))
@@ -157,7 +157,7 @@ func (p *devHttpProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Add only the currently worked on file
 	b, err := os.ReadFile(p.scriptFile)
 	if err != nil {
-		e := fmt.Errorf("failed to read script file %s: %v", p.scriptFile, err)
+		e := fmt.Errorf("failed to read script file %s: %w", p.scriptFile, err)
 		log.Error(e.Error())
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(e.Error()))
@@ -198,7 +198,7 @@ func (p *devHttpProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 			_, err = w.Write([]byte("Error: " + rep.Error))
 			if err != nil {
-				log.WithFields(fields).Errorf("failed to write error to HTTP response: %v", err)
+				log.WithFields(fields).Errorf("failed to write error to HTTP response: %w", err)
 			}
 
 			return
@@ -221,7 +221,7 @@ func (p *devHttpProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 				_, err = w.Write(sr.Payload)
 				if err != nil {
-					log.WithFields(fields).Errorf("failed to write reply back to HTTP response: %v", err)
+					log.WithFields(fields).Errorf("failed to write reply back to HTTP response: %w", err)
 				}
 			}
 

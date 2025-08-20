@@ -73,14 +73,14 @@ func (f *FileScriptStore) TakeLock(ctx context.Context, path string) (bool, erro
 func (f *FileScriptStore) WatchScripts(ctx context.Context, subject string, onChange func(subject, path string, script []byte, deleted bool)) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
-		log.Fatalf("failed to create watcher: %v", err)
+		log.Fatalf("failed to create watcher: %w", err)
 	}
 	defer watcher.Close()
 
 	// Add the file to the watcher
 	err = watcher.Add(f.filePath)
 	if err != nil {
-		log.Fatalf("failed to add file to watcher: %v", err)
+		log.Fatalf("failed to add file to watcher: %w", err)
 	}
 
 	log.Infof("Started watching file: %s", f.filePath)
@@ -98,7 +98,7 @@ func (f *FileScriptStore) WatchScripts(ctx context.Context, subject string, onCh
 
 				scr, err := script.ReadFile(filepath.Join(f.filePath, event.Name))
 				if err != nil {
-					log.Errorf("failed to read script file %s: %v", f.filePath, err)
+					log.Errorf("failed to read script file %s: %w", f.filePath, err)
 				}
 
 				// Trigger the onChange callback for each script
@@ -109,7 +109,7 @@ func (f *FileScriptStore) WatchScripts(ctx context.Context, subject string, onCh
 			if !ok {
 				return
 			}
-			log.Errorf("Watcher error: %v", err)
+			log.Errorf("Watcher error: %w", err)
 
 		case <-ctx.Done():
 			log.Info("Stopping watcher")

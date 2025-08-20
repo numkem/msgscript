@@ -32,26 +32,26 @@ func init() {
 func libAddRun(cmd *cobra.Command, args []string) {
 	store, err := msgstore.StoreByName(cmd.Flag("backend").Value.String(), cmd.Flag("etcdurls").Value.String(), "", "")
 	if err != nil {
-		log.Errorf("failed to create store: %v", err)
+		log.Errorf("failed to create store: %w", err)
 		return
 	}
 
 	recursive, err := cmd.Flags().GetBool("recursive")
 	if err != nil {
-		cmd.PrintErrln(fmt.Errorf("failed parse recursive flag: %v", err))
+		cmd.PrintErrln(fmt.Errorf("failed parse recursive flag: %w", err))
 		return
 	}
 
 	libraries, err := parseDirsForLibraries(args, recursive)
 	if err != nil {
-		cmd.PrintErrln(fmt.Errorf("failed to parse directories for librairies: %v", err))
+		cmd.PrintErrln(fmt.Errorf("failed to parse directories for librairies: %w", err))
 		return
 	}
 
 	for _, lib := range libraries {
 		err = store.AddLibrary(cmd.Context(), lib.Content, lib.Name)
 		if err != nil {
-			cmd.PrintErrln(fmt.Errorf("failed to add library %s to the store: %v", lib.Name, err))
+			cmd.PrintErrln(fmt.Errorf("failed to add library %s to the store: %w", lib.Name, err))
 			return
 		}
 	}
@@ -64,7 +64,7 @@ func parseDirsForLibraries(dirnames []string, recursive bool) ([]*scriptLib.Scri
 	for _, fname := range dirnames {
 		stat, err := os.Stat(fname)
 		if err != nil {
-			return nil, fmt.Errorf("failed to stat %s: %v", fname, err)
+			return nil, fmt.Errorf("failed to stat %s: %w", fname, err)
 		}
 
 		if stat.IsDir() {
@@ -79,7 +79,7 @@ func parseDirsForLibraries(dirnames []string, recursive bool) ([]*scriptLib.Scri
 						fullname := path.Join(fname, filename)
 						s, err := scriptLib.ReadFile(fullname)
 						if err != nil {
-							return fmt.Errorf("failed to read script %s: %v", fullname, err)
+							return fmt.Errorf("failed to read script %s: %w", fullname, err)
 						}
 
 						scripts = append(scripts, s)
@@ -90,7 +90,7 @@ func parseDirsForLibraries(dirnames []string, recursive bool) ([]*scriptLib.Scri
 			} else {
 				entries, err := os.ReadDir(fname)
 				if err != nil {
-					return nil, fmt.Errorf("failed to read directory: %v", err)
+					return nil, fmt.Errorf("failed to read directory: %w", err)
 				}
 
 				for _, e := range entries {
@@ -99,7 +99,7 @@ func parseDirsForLibraries(dirnames []string, recursive bool) ([]*scriptLib.Scri
 
 						s, err := scriptLib.ReadFile(fname)
 						if err != nil {
-							return nil, fmt.Errorf("failed to read script %s: %v", fullname, err)
+							return nil, fmt.Errorf("failed to read script %s: %w", fullname, err)
 						}
 
 						scripts = append(scripts, s)
@@ -110,7 +110,7 @@ func parseDirsForLibraries(dirnames []string, recursive bool) ([]*scriptLib.Scri
 		} else {
 			s, err := scriptLib.ReadFile(fname)
 			if err != nil {
-				return nil, fmt.Errorf("failed to read file %s: %v", fname, err)
+				return nil, fmt.Errorf("failed to read file %s: %w", fname, err)
 			}
 
 			if s.Name == "" {

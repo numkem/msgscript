@@ -29,7 +29,7 @@ func NewDevStore(libraryPath string) (ScriptStore, error) {
 	if libraryPath != "" {
 		stat, err := os.Stat(libraryPath)
 		if err != nil {
-			return nil, fmt.Errorf("failed to read library path %s: %v", libraryPath, err)
+			return nil, fmt.Errorf("failed to read library path %s: %w", libraryPath, err)
 		}
 		if !stat.IsDir() {
 			return nil, fmt.Errorf("given library path %s isn't a directory", libraryPath)
@@ -45,7 +45,7 @@ func NewDevStore(libraryPath string) (ScriptStore, error) {
 				filepath := path.Join(libraryPath, filename)
 				content, err := os.ReadFile(filepath)
 				if err != nil {
-					return fmt.Errorf("failed to read %s: %v", filename, err)
+					return fmt.Errorf("failed to read %s: %w", filename, err)
 				}
 
 				p := strings.Replace(strings.Replace(filename, libraryPath, "", 1), path.Ext(filename), "", 1)
@@ -56,7 +56,7 @@ func NewDevStore(libraryPath string) (ScriptStore, error) {
 			return nil
 		})
 		if err != nil {
-			return nil, fmt.Errorf("failed to walk through directory %s for library files: %v", libraryPath, err)
+			return nil, fmt.Errorf("failed to walk through directory %s for library files: %w", libraryPath, err)
 		}
 	}
 

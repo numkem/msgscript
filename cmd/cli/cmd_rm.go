@@ -24,7 +24,7 @@ func init() {
 func rmCmdRun(cmd *cobra.Command, args []string) {
 	scriptStore, err := msgstore.StoreByName(cmd.Flag("backend").Value.String(), cmd.Flag("etcdurls").Value.String(), "", "")
 	if err != nil {
-		cmd.PrintErrf("failed to get script store: %v", err)
+		cmd.PrintErrf("failed to get script store: %w", err)
 		return
 	}
 	subject := cmd.Flag("subject").Value.String()
@@ -32,7 +32,7 @@ func rmCmdRun(cmd *cobra.Command, args []string) {
 
 	err = scriptStore.DeleteScript(cmd.Context(), subject, name)
 	if err != nil {
-		cmd.PrintErrf("failed to remove script: %v", err)
+		cmd.PrintErrf("failed to remove script: %w", err)
 	}
 
 	cmd.Printf("Script removed\n")

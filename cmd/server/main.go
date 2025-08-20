@@ -35,7 +35,7 @@ func main() {
 	// Set up logging
 	level, err := log.ParseLevel(*logLevel)
 	if err != nil {
-		log.Fatalf("Invalid log level: %v", err)
+		log.Fatalf("Invalid log level: %w", err)
 	}
 	log.SetLevel(level)
 
@@ -46,7 +46,7 @@ func main() {
 	// Create the ScriptStore based on the selected backend
 	scriptStore, err := msgstore.StoreByName(*backendName, *etcdURL, *scriptDir, *libraryDir)
 	if err != nil {
-		log.Fatalf("failed to initialize the script store: %v", err)
+		log.Fatalf("failed to initialize the script store: %w", err)
 	}
 	log.Infof("Starting %s backend", *backendName)
 
@@ -61,7 +61,7 @@ func main() {
 				Port: 4222,
 			})
 			if err != nil {
-				log.Fatalf("failed to start embeded NATS server: %v", err)
+				log.Fatalf("failed to start embeded NATS server: %w", err)
 			}
 
 			go ns.Start()
@@ -81,7 +81,7 @@ func main() {
 
 	nc, err := nats.Connect(*natsURL)
 	if err != nil {
-		log.Fatalf("Failed to connect to NATS: %v", err)
+		log.Fatalf("Failed to connect to NATS: %w", err)
 	}
 	defer nc.Close()
 
@@ -90,7 +90,7 @@ func main() {
 	if *pluginDir != "" {
 		plugins, err = msgplugin.ReadPluginDir(*pluginDir)
 		if err != nil {
-			log.Fatalf("failed to read plugins: %v", err)
+			log.Fatalf("failed to read plugins: %w", err)
 		}
 	}
 
@@ -163,7 +163,7 @@ func main() {
 			log.WithFields(fields).Debugf("sent reply: %s", reply)
 			err = nc.Publish(msg.Reply, reply)
 			if err != nil {
-				log.WithFields(fields).Errorf("failed to publish reply after running script: %v", err)
+				log.WithFields(fields).Errorf("failed to reply to message: %w", err)
 			}
 		}
 
@@ -178,7 +178,7 @@ func main() {
 		}
 	})
 	if err != nil {
-		log.Fatalf("Failed to subscribe to NATS subjects: %v", err)
+		log.Fatalf("Failed to subscribe to NATS subjects: %w", err)
 	}
 
 	// Start HTTP Server

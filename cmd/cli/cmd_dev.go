@@ -45,7 +45,7 @@ func natsUrlByEnv() string {
 func devCmdRun(cmd *cobra.Command, args []string) {
 	store, err := msgstore.NewDevStore(cmd.Flag("library").Value.String())
 	if err != nil {
-		cmd.PrintErrf("failed to create store: %v\n", err)
+		cmd.PrintErrf("failed to create store: %w\n", err)
 		return
 	}
 
@@ -53,7 +53,7 @@ func devCmdRun(cmd *cobra.Command, args []string) {
 	if path := cmd.Flag("pluginDir").Value.String(); path != "" {
 		plugins, err = msgplugin.ReadPluginDir(path)
 		if err != nil {
-			cmd.PrintErrf("failed to read plugins: %v\n", err)
+			cmd.PrintErrf("failed to read plugins: %w\n", err)
 			return
 		}
 	}
@@ -67,7 +67,7 @@ func devCmdRun(cmd *cobra.Command, args []string) {
 	// Try to read the file to see if we can find headers
 	s, err := scriptLib.ReadFile(args[0])
 	if err != nil {
-		log.Errorf("failed to read the script file %s: %v\n", args[0], err)
+		log.Errorf("failed to read the script file %s: %w\n", args[0], err)
 		return
 	}
 
@@ -91,7 +91,7 @@ func devCmdRun(cmd *cobra.Command, args []string) {
 	// Add the given script to the store
 	err = store.AddScript(cmd.Context(), subject, name, s.Content)
 	if err != nil {
-		cmd.PrintErrf("failed to add script to store: %v\n", err)
+		cmd.PrintErrf("failed to add script to store: %w\n", err)
 		return
 	}
 
@@ -101,7 +101,7 @@ func devCmdRun(cmd *cobra.Command, args []string) {
 	if _, err := os.Stat(payloadFlag); err == nil {
 		content, err := os.ReadFile(payloadFlag)
 		if err != nil {
-			cmd.PrintErrf("failed to read payload file %s: %v\n", payloadFlag, err)
+			cmd.PrintErrf("failed to read payload file %s: %w\n", payloadFlag, err)
 			return
 		}
 
@@ -132,10 +132,10 @@ func devCmdRun(cmd *cobra.Command, args []string) {
 
 		j, err := r.JSON()
 		if err != nil {
-			log.WithFields(fields).Errorf("failed to Unmarshal reply: %v", err)
+			log.WithFields(fields).Errorf("failed to Unmarshal reply: %w", err)
 		}
 
-		cmd.Printf("Result: %v\n", string(j))
+		cmd.Printf("Result: %w\n", string(j))
 		stopChan <- struct{}{}
 	}
 
