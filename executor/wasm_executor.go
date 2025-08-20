@@ -23,8 +23,8 @@ type WasmExecutor struct {
 	store      msgstore.ScriptStore
 }
 
-func NewWasmExecutor(store msgstore.ScriptStore, plugins []msgplugins.PreloadFunc, nc *nats.Conn) Executor {
-	ctx, cancelFunc := context.WithCancel(context.Background())
+func NewWasmExecutor(c context.Context, store msgstore.ScriptStore, plugins []msgplugins.PreloadFunc, nc *nats.Conn) Executor {
+	ctx, cancelFunc := context.WithCancel(c)
 
 	return &WasmExecutor{
 		cancelFunc: cancelFunc,
@@ -33,17 +33,17 @@ func NewWasmExecutor(store msgstore.ScriptStore, plugins []msgplugins.PreloadFun
 	}
 }
 
-func (we *WasmExecutor) HandleMessage(ctx context.Context, msg *Message, replyFunc func(r *Reply)) {
+func (we *WasmExecutor) HandleMessage(ctx context.Context, msg *Message, rf ReplyFunc) {
 	// Look up the Lua script for the given subject
 	scripts, err := we.store.GetScripts(ctx, msg.Subject)
 	if err != nil {
-		log.Errorf("failed to get scripts for subject %s: %w", msg.Subject, err)
+		log.Errorf("failed to get scripts for subject %s: %v", msg.Subject, err)
 		return
 	}
 
 	if scripts == nil {
 		err := &NoScriptFoundError{}
-		replyFunc(&Reply{Error: err.Error()})
+		rf(&Reply{Error: err.Error()})
 		return
 	}
 
@@ -58,6 +58,7 @@ func (we *WasmExecutor) HandleMessage(ctx context.Context, msg *Message, replyFu
 		fields := log.Fields{
 			"subject": msg.Subject,
 			"path":    name,
+			"executor": "wasm",
 		}
 
 		go func(content []byte) {
@@ -160,7 +161,7 @@ func (we *WasmExecutor) HandleMessage(ctx context.Context, msg *Message, replyFu
 		r.Error = r.Error + " " + e.Error()
 	}
 
-	replyFunc(r)
+	rf(r)
 }
 
 func (*WasmExecutor) executeRawMessage(instance *wasmtime.Instance, store *wasmtime.Store, tmpFile *os.File) (*ScriptResult, error) {
@@ -199,11 +200,3 @@ func (we *WasmExecutor) Stop() {
 	log.Debug("WasmExecutor stopped")
 }
 
-func createTempFile(pattern string) (*os.File, error) {
-	tmpFile, err := os.CreateTemp(os.TempDir(), pattern)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create temp file: %v", err)
-	}
-
-	return tmpFile, nil
-}

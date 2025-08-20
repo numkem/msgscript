@@ -8,8 +8,8 @@
   outputs =
     { self, nixpkgs }:
     let
-      version = "0.4.0";
-      vendorHash = "sha256-pIDS1ejfz/sTuMTVMTscNG09PSw8wW5+KKeABOSwlms=";
+      version = "0.5.0";
+      vendorHash = "sha256-LcgdJIsn3/fHv3NGvGdfq/Y3N7CTuIH/b5Rv5tEMUg8=";
 
       mkCli =
         pkgs:
@@ -24,7 +24,13 @@
 
           subPackages = [ "cmd/cli" ];
 
-          buildInputs = [ wasmtime.dev ];
+          nativeBuildInputs = [ pkgs.pkg-config ];
+
+          buildInputs = [
+            wasmtime.dev
+            pkgs.btrfs-progs
+            pkgs.gpgme
+          ];
 
           postInstall = ''
             mv $out/bin/cli $out/bin/msgscriptcli
@@ -44,7 +50,13 @@
 
           subPackages = [ "cmd/server" ];
 
-          buildInputs = [ wasmtime.dev ];
+          nativeBuildInputs = [ pkgs.pkg-config ];
+
+          buildInputs = [
+            wasmtime.dev
+            pkgs.btrfs-progs
+            pkgs.gpgme
+          ];
 
           doCheck = false; # Requires networking, will just timeout
 
@@ -153,6 +165,11 @@
 
             # wasm
             tinygo
+
+            # Deps for podman
+            pkg-config
+            btrfs-progs
+            gpgme
 
             # Server compose
             arion

@@ -32,7 +32,7 @@ func init() {
 func libAddRun(cmd *cobra.Command, args []string) {
 	store, err := msgstore.StoreByName(cmd.Flag("backend").Value.String(), cmd.Flag("etcdurls").Value.String(), "", "")
 	if err != nil {
-		log.Errorf("failed to create store: %w", err)
+		log.Errorf("failed to create store: %v", err)
 		return
 	}
 

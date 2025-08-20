@@ -3,6 +3,8 @@ package executor
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"os"
 	"sync"
 	"time"
 )
@@ -11,15 +13,19 @@ const (
 	MAX_LUA_RUNNING_TIME = 2 * time.Minute
 	EXECUTOR_LUA_NAME    = "lua"
 	EXECUTOR_WASM_NAME   = "wasm"
+	EXECUTOR_PODMAN_NAME = "podman"
 )
 
+type ReplyFunc func(r *Reply)
+
 type Message struct {
+	Async    bool   `json:"async"`
 	Executor string `json:"executor"`
 	Method   string `json:"method"`
 	Payload  []byte `json:"payload"`
+	Raw      bool   `json:"raw"`
 	Subject  string `json:"subject"`
 	URL      string `json:"url"`
-	Raw      bool
 }
 
 type Reply struct {
@@ -78,7 +84,16 @@ func (e *NoScriptFoundError) Error() string {
 	return "No script found for subject"
 }
 
+func createTempFile(pattern string) (*os.File, error) {
+	tmpFile, err := os.CreateTemp(os.TempDir(), pattern)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create temp file: %w", err)
+	}
+
+	return tmpFile, nil
+}
+
 type Executor interface {
-	HandleMessage(context.Context, *Message, func(*Reply))
+	HandleMessage(context.Context, *Message, ReplyFunc)
 	Stop()
 }

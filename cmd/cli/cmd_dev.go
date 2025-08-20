@@ -3,7 +3,6 @@ package main
 import (
 	"os"
 
-	"github.com/nats-io/nats.go"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
@@ -34,18 +33,10 @@ func init() {
 	devCmd.MarkFlagRequired("input")
 }
 
-func natsUrlByEnv() string {
-	if url := os.Getenv("NATS_URL"); url != "" {
-		return url
-	} else {
-		return nats.DefaultURL
-	}
-}
-
 func devCmdRun(cmd *cobra.Command, args []string) {
 	store, err := msgstore.NewDevStore(cmd.Flag("library").Value.String())
 	if err != nil {
-		cmd.PrintErrf("failed to create store: %w\n", err)
+		cmd.PrintErrf("failed to create store: %v\n", err)
 		return
 	}
 
@@ -53,13 +44,17 @@ func devCmdRun(cmd *cobra.Command, args []string) {
 	if path := cmd.Flag("pluginDir").Value.String(); path != "" {
 		plugins, err = msgplugin.ReadPluginDir(path)
 		if err != nil {
-			cmd.PrintErrf("failed to read plugins: %w\n", err)
+			cmd.PrintErrf("failed to read plugins: %v\n", err)
 			return
 		}
 	}
 
-	luaExecutor := executor.NewLuaExecutor(store, plugins, nil)
-	wasmExecutor := executor.NewWasmExecutor(store, nil, nil)
+	luaExecutor := executor.NewLuaExecutor(cmd.Context(), store, plugins, nil)
+	wasmExecutor := executor.NewWasmExecutor(cmd.Context(), store, nil, nil)
+	podmanExecutor, err := executor.NewPodmanExecutor(cmd.Context(), store)
+	if err != nil {
+		log.Fatalf("failed to create podman executor: %v", err)
+	}
 
 	subject := cmd.Flag("subject").Value.String()
 	name := cmd.Flag("name").Value.String()
@@ -67,7 +62,7 @@ func devCmdRun(cmd *cobra.Command, args []string) {
 	// Try to read the file to see if we can find headers
 	s, err := scriptLib.ReadFile(args[0])
 	if err != nil {
-		log.Errorf("failed to read the script file %s: %w\n", args[0], err)
+		log.Errorf("failed to read the script file %s: %v\n", args[0], err)
 		return
 	}
 
@@ -91,7 +86,7 @@ func devCmdRun(cmd *cobra.Command, args []string) {
 	// Add the given script to the store
 	err = store.AddScript(cmd.Context(), subject, name, s.Content)
 	if err != nil {
-		cmd.PrintErrf("failed to add script to store: %w\n", err)
+		cmd.PrintErrf("failed to add script to store: %v\n", err)
 		return
 	}
 
@@ -101,7 +96,7 @@ func devCmdRun(cmd *cobra.Command, args []string) {
 	if _, err := os.Stat(payloadFlag); err == nil {
 		content, err := os.ReadFile(payloadFlag)
 		if err != nil {
-			cmd.PrintErrf("failed to read payload file %s: %w\n", payloadFlag, err)
+			cmd.PrintErrf("failed to read payload file %s: %v\n", payloadFlag, err)
 			return
 		}
 
@@ -132,10 +127,10 @@ func devCmdRun(cmd *cobra.Command, args []string) {
 
 		j, err := r.JSON()
 		if err != nil {
-			log.WithFields(fields).Errorf("failed to Unmarshal reply: %w", err)
+			log.WithFields(fields).Errorf("failed to Unmarshal reply: %v", err)
 		}
 
-		cmd.Printf("Result: %w\n", string(j))
+		cmd.Printf("Result: %s\n", string(j))
 		stopChan <- struct{}{}
 	}
 
@@ -144,6 +139,8 @@ func devCmdRun(cmd *cobra.Command, args []string) {
 		luaExecutor.HandleMessage(cmd.Context(), m, replyFunc)
 	case executor.EXECUTOR_WASM_NAME:
 		wasmExecutor.HandleMessage(cmd.Context(), m, replyFunc)
+	case executor.EXECUTOR_PODMAN_NAME:
+		podmanExecutor.HandleMessage(cmd.Context(), m, replyFunc)
 	default:
 		luaExecutor.HandleMessage(cmd.Context(), m, replyFunc)
 	}

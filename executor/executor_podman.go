@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"sync"
@@ -13,9 +14,10 @@ import (
 	"github.com/containers/podman/v5/pkg/bindings/images"
 	"github.com/containers/podman/v5/pkg/specgen"
 	"github.com/google/uuid"
-	log "github.com/sirupsen/logrus"
 	spec "github.com/opencontainers/runtime-spec/specs-go"
+	log "github.com/sirupsen/logrus"
 
+	scriptLib "github.com/numkem/msgscript/script"
 	msgstore "github.com/numkem/msgscript/store"
 )
 
@@ -47,10 +49,11 @@ func NewPodmanExecutor(ctx context.Context, store msgstore.ScriptStore) (*Podman
 
 	return &PodmanExecutor{
 		ConnText: connText,
+		store:    store,
 	}, nil
 }
 
-func (pe *PodmanExecutor) HandleMessage(ctx context.Context, msg *Message, replyFunc func(*Reply)) {
+func (pe *PodmanExecutor) HandleMessage(ctx context.Context, msg *Message, replyFunc ReplyFunc) {
 	fields := log.Fields{
 		"subject":  msg.Subject,
 		"executor": "podman",
@@ -77,12 +80,18 @@ func (pe *PodmanExecutor) HandleMessage(ctx context.Context, msg *Message, reply
 		go func(content []byte) {
 			defer wg.Done()
 
-			result, err := pe.executeInContainer(ctx, msg)
+			scr, err := scriptLib.ReadString(string(content))
 			if err != nil {
-				r.Error = err.Error()
-			} else {
-				r.Results.Store(msg.Subject, result)
+				errs <- fmt.Errorf("failed to read script: %w", err)
+				return
 			}
+
+			result, err := pe.executeInContainer(fields, scr, msg)
+			if err != nil {
+				errs <- fmt.Errorf("failed to execute container: %w", err)
+			}
+
+			r.Results.Store(msg.Subject, result)
 		}(ctnCfg)
 	}
 
@@ -97,86 +106,115 @@ func (pe *PodmanExecutor) HandleMessage(ctx context.Context, msg *Message, reply
 	replyFunc(r)
 }
 
-func (pe *PodmanExecutor) executeInContainer(ctx context.Context, msg *Message) (*ScriptResult, error) {
+func (pe *PodmanExecutor) executeInContainer(fields log.Fields, scr *scriptLib.Script, msg *Message) (*ScriptResult, error) {
 	// Get the configuration of the container from the message itself
 	cfg := new(containerConfiguration)
-	err := json.Unmarshal(msg.Payload, cfg)
+	err := json.Unmarshal(scr.Content, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode container configuration: %w", err)
 	}
 
-	if cfg.User == "" {
-		cfg.User = "root"
-	}
-	if len(cfg.Groups) == 0 {
-		cfg.Groups = []string{"root"}
-	}
-
 	containerName := "msgscript-" + uuid.New().String()[:8]
-
-	f, err := createTempFile("msgscript-ctn-log-*")
-	if err != nil {
-		return nil, fmt.Errorf("failed to create temp file: %w", err)
-	}
-	defer f.Close()
-	defer os.Remove(f.Name())
 
 	// Pull the requested image
 	_, err = images.Pull(pe.ConnText, cfg.Image, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to pull image %s: %w", err)
+		return nil, fmt.Errorf("failed to pull image %s: %w", cfg.Image, err)
 	}
 
-	spec := &specgen.SpecGenerator{
-		ContainerBasicConfig: specgen.ContainerBasicConfig{
-			Name: containerName,
-			Env:  map[string]string{"SUBJECT": msg.Subject, "URL": msg.URL, "PAYLOAD": string(msg.Payload), "METHOD": msg.Method},
-			LogConfiguration: &specgen.LogConfig{
-				Driver: "json-file",
-				Path:   f.Name(),
-			},
-			Command: cfg.Command,
-		},
-		ContainerStorageConfig: specgen.ContainerStorageConfig{
-			Image:  cfg.Image,
-			Mounts: cfg.Mounts,
-		},
-		ContainerSecurityConfig: specgen.ContainerSecurityConfig{
-			Privileged: &cfg.Privileged,
-			User:       cfg.User,
-			Groups:     cfg.Groups,
-		},
-	}
+	spec := specgen.NewSpecGenerator(cfg.Image, false)
+	spec.Command = cfg.Command
+	spec.Name = containerName
+	spec.Env = map[string]string{"SUBJECT": msg.Subject, "URL": msg.URL, "PAYLOAD": string(msg.Payload), "METHOD": msg.Method}
+	spec.Mounts = cfg.Mounts
+	spec.User = cfg.User
+	spec.Groups = cfg.Groups
+	spec.Privileged = &cfg.Privileged
+	spec.Stdin = boolPtr(true)
+	spec.Terminal = boolPtr(true)
+	spec.Remove = boolPtr(true)
 
+	fields["ctnName"] = containerName
+
+	log.WithFields(fields).Debugf("creating container from spec")
 	container, err := containers.CreateWithSpec(pe.ConnText, spec, nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create container with spec: %w", err)
 	}
+	fields["ctnID"] = container.ID
 
+	stdout, err := createTempFile("msgscript-ctn-stdout-*")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create temp file: %w", err)
+	}
+	defer stdout.Close()
+	defer os.Remove(stdout.Name())
+	log.WithFields(fields).WithField("filename", stdout.Name()).Debugf("created stdout file")
+
+	stderr, err := createTempFile("msgscript-ctn-stderr-*")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create temp file: %w", err)
+	}
+	defer stderr.Close()
+	defer os.Remove(stderr.Name())
+	log.WithFields(fields).WithField("filename", stderr.Name()).Debugf("created stderr file")
+
+	stdin, stdinW := io.Pipe()
+	go func() {
+		defer stdinW.Close()
+		_, err := stdinW.Write(msg.Payload)
+		if err != nil {
+			log.WithFields(fields).WithError(err).Error("failed to write to container stdin")
+		}
+	}()
+
+	attachReady := make(chan bool)
+	go func() {
+		err := containers.Attach(pe.ConnText, container.ID, stdin, stdout, stderr, attachReady, nil)
+		if err != nil {
+			log.WithFields(fields).Errorf("failed to attach to container ID %s: %v", container.ID, err)
+		}
+	}()
+
+	<-attachReady
+	log.WithFields(fields).Debug("attached to container")
+	pe.containers.Store(containerName, container.ID)
+
+	log.WithFields(fields).Debug("starting container")
 	err = containers.Start(pe.ConnText, container.ID, nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to start container: %w", err)
 	}
-	pe.containers.Store(containerName, container.ID)
+	log.WithFields(fields).Debug("started container")
 
 	exitCode, err := containers.Wait(pe.ConnText, container.ID, nil)
 	if err != nil {
 		return nil, fmt.Errorf("Container exited with error: %w", err)
 	}
-	log.WithField("containerName", containerName).Info("container exited with code: %d", exitCode)
+	log.WithField("containerName", containerName).Infof("container exited with code: %d", exitCode)
 
 	pe.containers.Delete(containerName)
+	log.WithFields(fields).Debug("container removed")
 
 	// Read it's log file and return it's content
-	payload, err := os.ReadFile(f.Name())
+	resStdout, err := os.ReadFile(stdout.Name())
 	if err != nil {
-		return nil, fmt.Errorf("failed to read log file: %w", err)
+		return nil, fmt.Errorf("failed to read stdout file %s: %w", stdout.Name(), err)
 	}
+
+	resStderr, err := os.ReadFile(stderr.Name())
+	if err != nil {
+		return nil, fmt.Errorf("failed to read stderr file %s: %w", stderr.Name(), err)
+	}
+
+	log.WithFields(fields).Debugf("stdout: \n%+v", string(resStdout))
+	log.WithFields(fields).Debugf("stderr: \n%+v", string(resStderr))
 
 	result := &ScriptResult{
 		Code:    int(exitCode),
 		Headers: make(map[string]string),
-		Payload: payload,
+		Payload: resStdout,
+		Error:   string(resStderr),
 	}
 
 	return result, nil
@@ -184,7 +222,7 @@ func (pe *PodmanExecutor) executeInContainer(ctx context.Context, msg *Message) 
 
 func (pe *PodmanExecutor) Stop() {
 	// Go through each running container and kill them
-	pe.containers.Range(func(key, value interface{}) bool {
+	pe.containers.Range(func(key, value any) bool {
 		containers.Kill(pe.ConnText, value.(string), &containers.KillOptions{
 			Signal: stringPtr("SIGKILL"),
 		})

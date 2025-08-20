@@ -36,7 +36,7 @@ func natsPublish(L *lua.LState) int {
 	err := nc.Publish(subject, []byte(message))
 	if err != nil {
 		L.Push(lua.LBool(false))
-		L.Push(lua.LString(fmt.Sprintf("Failed to publish message: %w", err)))
+		L.Push(lua.LString(fmt.Sprintf("Failed to publish message: %v", err)))
 		return 2
 	}
 

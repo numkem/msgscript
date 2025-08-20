@@ -35,7 +35,7 @@ func main() {
 	// Set up logging
 	level, err := log.ParseLevel(*logLevel)
 	if err != nil {
-		log.Fatalf("Invalid log level: %w", err)
+		log.Fatalf("Invalid log level: %v", err)
 	}
 	log.SetLevel(level)
 
@@ -46,7 +46,7 @@ func main() {
 	// Create the ScriptStore based on the selected backend
 	scriptStore, err := msgstore.StoreByName(*backendName, *etcdURL, *scriptDir, *libraryDir)
 	if err != nil {
-		log.Fatalf("failed to initialize the script store: %w", err)
+		log.Fatalf("failed to initialize the script store: %v", err)
 	}
 	log.Infof("Starting %s backend", *backendName)
 
@@ -61,7 +61,7 @@ func main() {
 				Port: 4222,
 			})
 			if err != nil {
-				log.Fatalf("failed to start embeded NATS server: %w", err)
+				log.Fatalf("failed to start embeded NATS server: %v", err)
 			}
 
 			go ns.Start()
@@ -81,7 +81,7 @@ func main() {
 
 	nc, err := nats.Connect(*natsURL)
 	if err != nil {
-		log.Fatalf("Failed to connect to NATS: %w", err)
+		log.Fatalf("Failed to connect to NATS: %v", err)
 	}
 	defer nc.Close()
 
@@ -90,17 +90,21 @@ func main() {
 	if *pluginDir != "" {
 		plugins, err = msgplugin.ReadPluginDir(*pluginDir)
 		if err != nil {
-			log.Fatalf("failed to read plugins: %w", err)
+			log.Fatalf("failed to read plugins: %v", err)
 		}
 	}
 
-	luaExecutor := executor.NewLuaExecutor(scriptStore, plugins, nc)
-	wasmExecutor := executor.NewWasmExecutor(scriptStore, nil, nil)
-
-	log.Info("Starting message watch...")
-
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	luaExecutor := executor.NewLuaExecutor(ctx, scriptStore, plugins, nc)
+	wasmExecutor := executor.NewWasmExecutor(ctx, scriptStore, nil, nil)
+	podmanExecutor, err := executor.NewPodmanExecutor(ctx, scriptStore)
+	if err != nil {
+		log.Fatalf("failed to create podman executor: %v", err)
+	}
+
+	log.Info("Starting message watch...")
 
 	// Set up a message handler
 	_, err = nc.Subscribe(">", func(msg *nats.Msg) {
@@ -120,6 +124,12 @@ func main() {
 			m.Raw = true
 		}
 
+		fields := log.Fields{
+			"subject": m.Subject,
+			"raw": m.Raw,
+			"async": m.Async,
+		}
+
 		// The above unmarshalling only applies to the structure of the JSON.
 		// Even if you feed it another JSON where none of the keys matches,
 		// it will just end up being an empty struct
@@ -130,41 +140,16 @@ func main() {
 			}
 		}
 
-		messageReply := func(r *executor.Reply) {
-			fields := log.Fields{
-				"Subject": m.Subject,
-				"URL":     m.URL,
-				"Method":  m.Method,
-			}
-
-			if r.Error != "" {
-				log.WithFields(fields).Errorf("error while running script: %v", err)
-			}
-
-			// Send a reply if the message has a reply subject
-			if msg.Reply == "" {
-				return
-			}
-
-			var reply []byte
-			if !m.Raw {
-				reply, err = r.JSON()
-				if err != nil {
-					log.WithFields(fields).Errorf("failed to serialize script reply to JSON: %v", err)
-				}
-			} else {
-				if r.Error != "" {
-					reply = []byte(r.Error)
-				} else {
-					reply = r.Bytes()
-				}
-			}
-
-			log.WithFields(fields).Debugf("sent reply: %s", reply)
-			err = nc.Publish(msg.Reply, reply)
+		replier := &replier{nc: nc}
+		var messageReply executor.ReplyFunc
+		if m.Async {
+			messageReply = replier.AsyncReply(m, msg)
+			err = nc.Publish(msg.Reply, []byte("{}"))
 			if err != nil {
-				log.WithFields(fields).Errorf("failed to reply to message: %w", err)
+				log.WithFields(fields).Errorf("failed to reply to message: %v", err)
 			}
+		} else {
+			messageReply = replier.SyncReply(m, msg)
 		}
 
 		// Handle the message by invoking the corresponding Lua script
@@ -173,12 +158,14 @@ func main() {
 			luaExecutor.HandleMessage(ctx, m, messageReply)
 		case executor.EXECUTOR_WASM_NAME:
 			wasmExecutor.HandleMessage(ctx, m, messageReply)
+		case executor.EXECUTOR_PODMAN_NAME:
+			podmanExecutor.HandleMessage(ctx, m, messageReply)
 		default:
 			luaExecutor.HandleMessage(ctx, m, messageReply)
 		}
 	})
 	if err != nil {
-		log.Fatalf("Failed to subscribe to NATS subjects: %w", err)
+		log.Fatalf("Failed to subscribe to NATS subjects: %v", err)
 	}
 
 	// Start HTTP Server

@@ -32,8 +32,8 @@ type LuaExecutor struct {
 }
 
 // NewLuaExecutor creates a new ScriptExecutor using the provided ScriptStore
-func NewLuaExecutor(store msgstore.ScriptStore, plugins []msgplugins.PreloadFunc, nc *nats.Conn) Executor {
-	ctx, cancelFunc := context.WithCancel(context.Background())
+func NewLuaExecutor(c context.Context, store msgstore.ScriptStore, plugins []msgplugins.PreloadFunc, nc *nats.Conn) Executor {
+	ctx, cancelFunc := context.WithCancel(c)
 
 	return &LuaExecutor{
 		cancelFunc: cancelFunc,
@@ -44,22 +44,23 @@ func NewLuaExecutor(store msgstore.ScriptStore, plugins []msgplugins.PreloadFunc
 	}
 }
 
-func replyWithError(fields log.Fields, replyFunc func(r *Reply), msg string, a ...any) {
+func replyWithError(fields log.Fields, rf ReplyFunc, msg string, a ...any) {
 	e := fmt.Errorf(msg, a...)
 	log.WithFields(fields).Error(e)
-	replyFunc(&Reply{Error: e.Error()})
+	rf(&Reply{Error: e.Error()})
 }
 
 // HandleMessage receives a message, matches it to a Lua script, and executes the script in a new goroutine
-func (le *LuaExecutor) HandleMessage(ctx context.Context, msg *Message, replyFunc func(r *Reply)) {
+func (le *LuaExecutor) HandleMessage(ctx context.Context, msg *Message, rf ReplyFunc) {
 	fields := log.Fields{
 		"subject": msg.Subject,
+		"executor": "lua",
 	}
 
 	// Look up the Lua script for the given subject
 	scripts, err := le.store.GetScripts(ctx, msg.Subject)
 	if err != nil || scripts == nil {
-		replyWithError(fields, replyFunc, "failed to get scripts for subject %s: %v", msg.Subject, err)
+		replyWithError(fields, rf, "failed to get scripts for subject %s: %w", msg.Subject, err)
 		return
 	}
 
@@ -106,7 +107,7 @@ func (le *LuaExecutor) HandleMessage(ctx context.Context, msg *Message, replyFun
 
 			locked, err := le.store.TakeLock(ctx, name)
 			if err != nil {
-				log.WithFields(fields).Debugf("failed to get lock: %w", err)
+				log.WithFields(fields).Debugf("failed to get lock: %s", err)
 				return
 			}
 
@@ -154,7 +155,7 @@ func (le *LuaExecutor) HandleMessage(ctx context.Context, msg *Message, replyFun
 				Headers: make(map[string]string),
 			}
 			if err := L.DoString(sb.String()); err != nil {
-				msg := fmt.Sprintf("error parsing Lua script: %w", err)
+				msg := fmt.Sprintf("error parsing Lua script: %s", err)
 				log.WithFields(fields).Errorf(msg)
 				res.Error = err.Error()
 				r.Results.Store(name, res)
@@ -186,7 +187,7 @@ func (le *LuaExecutor) HandleMessage(ctx context.Context, msg *Message, replyFun
 		r.Error = r.Error + " " + e.Error()
 	}
 
-	replyFunc(r)
+	rf(r)
 }
 
 func (*LuaExecutor) executeHTMLMessage(fields log.Fields, L *lua.LState, msg *Message, reply *Reply, res *ScriptResult, name string) {

@@ -62,7 +62,10 @@ func (p *httpNatsProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	payload, err := io.ReadAll(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(fmt.Sprintf("failed to read request body: %w", err)))
+		_, err = fmt.Fprintf(w, "failed to read request body: %s", err)
+		if err != nil {
+			log.WithFields(fields).Errorf("failed to write payload: %v", err)
+		}
 		return
 	}
 
@@ -78,7 +81,7 @@ func (p *httpNatsProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), timeout)
 	defer cancel()
 
-	url := strings.Replace(r.URL.String(), "/"+subject, "", -1)
+	url := strings.ReplaceAll(r.URL.String(), "/"+subject, "")
 	log.Debug(url)
 	body, err := json.Marshal(&executor.Message{
 		Payload: payload,
@@ -87,7 +90,7 @@ func (p *httpNatsProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		URL:     url,
 	})
 	if err != nil {
-		log.Errorf("failed to encode message: %w", err)
+		log.WithFields(fields).Errorf("failed to encode message: %v", err)
 		return
 	}
 
@@ -102,7 +105,7 @@ func (p *httpNatsProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	err = json.Unmarshal(msg.Data, rep)
 	if err != nil {
 		w.WriteHeader(http.StatusFailedDependency)
-		w.Write([]byte(fmt.Sprintf("Error: %w", err)))
+		fmt.Fprintf(w, "Error: %v", err)
 		return
 	}
 
@@ -115,7 +118,7 @@ func (p *httpNatsProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		_, err = w.Write([]byte("Error: " + rep.Error))
 		if err != nil {
-			log.Errorf("failed to write error to HTTP response: %w", err)
+			log.WithFields(fields).Errorf("failed to write error to HTTP response: %v", err)
 		}
 
 		return
@@ -137,7 +140,7 @@ func (p *httpNatsProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		_, err = w.Write(sr.Payload)
 		if err != nil {
-			log.Errorf("failed to write reply back to HTTP response: %w", err)
+			log.WithFields(fields).Errorf("failed to write reply back to HTTP response: %v", err)
 		}
 
 		// Since only the HTML page reply can "win" we ignore the rest
@@ -147,12 +150,12 @@ func (p *httpNatsProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Convert the results to bytes
 	rr, err := json.Marshal(rep.AllResults)
 	if err != nil {
-		log.Errorf("failed to serialize all results to JSON: %w", err)
+		log.WithFields(fields).Errorf("failed to serialize all results to JSON: %v", err)
 	}
 
 	_, err = w.Write(rr)
 	if err != nil {
-		log.Errorf("failed to write reply back to HTTP response: %w", err)
+		log.WithFields(fields).Errorf("failed to write reply back to HTTP response: %v", err)
 	}
 }
 
@@ -169,7 +172,7 @@ func hasHTMLResult(results map[string]*executor.ScriptResult) (bool, *executor.S
 func runHTTP(port int, natsURL string) {
 	proxy, err := NewHttpNatsProxy(port, natsURL)
 	if err != nil {
-		log.Fatalf("failed to create HTTP proxy: %w", err)
+		log.Fatalf("failed to create HTTP proxy: %v", err)
 	}
 
 	log.Infof("Starting HTTP server on port %d", port)

@@ -9,8 +9,6 @@ import (
 	"path"
 	"strconv"
 	"strings"
-
-	"log" "github.com/sirupsen/logrus"
 )
 
 const (
