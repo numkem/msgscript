@@ -101,7 +101,7 @@ func main() {
 	wasmExecutor := executor.NewWasmExecutor(ctx, scriptStore, nil, nil)
 	podmanExecutor, err := executor.NewPodmanExecutor(ctx, scriptStore)
 	if err != nil {
-		log.Fatalf("failed to create podman executor: %v", err)
+		log.Warnf("failed to create podman executor: %v", err)
 	}
 
 	log.Info("Starting message watch...")
