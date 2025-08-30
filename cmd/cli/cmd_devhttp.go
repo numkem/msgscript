@@ -52,20 +52,11 @@ func devHttpCmdRun(cmd *cobra.Command, args []string) {
 		}
 	}
 
-	var scrExecutor executor.Executor
-	switch cmd.Flag("executor").Value.String() {
-	case executor.EXECUTOR_LUA_NAME:
-		scrExecutor = executor.NewLuaExecutor(cmd.Context(), store, plugins, nil)
-	case executor.EXECUTOR_WASM_NAME:
-		scrExecutor = executor.NewWasmExecutor(cmd.Context(), store, nil, nil)
-	case executor.EXECUTOR_PODMAN_NAME:
-		scrExecutor, err = executor.NewPodmanExecutor(cmd.Context(), store)
-		if err != nil {
-			cmd.PrintErrf("failed to create podman executor: %v", err)
-			return
-		}
-	default:
-		cmd.PrintErrf("unknown executor named %s", cmd.Flag("executor").Value.String())
+
+	executors := executor.StartAllExecutors(cmd.Context(), store, plugins, nil)
+	exec, err := executor.ExecutorByName(cmd.Flag("executor").Value.String(), executors)
+	if err != nil {
+		cmd.PrintErrf("failed to get executor for message: %v", err)
 		return
 	}
 
@@ -87,7 +78,7 @@ func devHttpCmdRun(cmd *cobra.Command, args []string) {
 	go func() {
 		proxy := &devHttpProxy{
 			store:      store,
-			executor:   scrExecutor,
+			executor:   exec,
 			context:    ctx,
 			scriptFile: fullpath,
 			libraryDir: fullLibraryDir,
@@ -103,7 +94,7 @@ func devHttpCmdRun(cmd *cobra.Command, args []string) {
 	cancel()
 
 	cmd.Println("Received shutdown signal, stopping server...")
-	scrExecutor.Stop()
+	exec.Stop()
 }
 
 type devHttpProxy struct {

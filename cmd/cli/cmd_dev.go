@@ -49,13 +49,6 @@ func devCmdRun(cmd *cobra.Command, args []string) {
 		}
 	}
 
-	luaExecutor := executor.NewLuaExecutor(cmd.Context(), store, plugins, nil)
-	wasmExecutor := executor.NewWasmExecutor(cmd.Context(), store, nil, nil)
-	podmanExecutor, err := executor.NewPodmanExecutor(cmd.Context(), store)
-	if err != nil {
-		log.Fatalf("failed to create podman executor: %v", err)
-	}
-
 	subject := cmd.Flag("subject").Value.String()
 	name := cmd.Flag("name").Value.String()
 
@@ -134,18 +127,17 @@ func devCmdRun(cmd *cobra.Command, args []string) {
 		stopChan <- struct{}{}
 	}
 
-	switch m.Executor {
-	case executor.EXECUTOR_LUA_NAME:
-		luaExecutor.HandleMessage(cmd.Context(), m, replyFunc)
-	case executor.EXECUTOR_WASM_NAME:
-		wasmExecutor.HandleMessage(cmd.Context(), m, replyFunc)
-	case executor.EXECUTOR_PODMAN_NAME:
-		podmanExecutor.HandleMessage(cmd.Context(), m, replyFunc)
-	default:
-		luaExecutor.HandleMessage(cmd.Context(), m, replyFunc)
+	executors := executor.StartAllExecutors(cmd.Context(), store, plugins, nil)
+	exec, err := executor.ExecutorByName(m.Executor, executors)
+	if err != nil {
+		cmd.PrintErrf("failed to get executor for message: %v", err)
+		stopChan <- struct{}{}
+		return
 	}
 
+	exec.HandleMessage(cmd.Context(), m, replyFunc)
+
 	<-stopChan
-	luaExecutor.Stop()
-	wasmExecutor.Stop()
+
+	executor.StopAllExecutors(executors)
 }

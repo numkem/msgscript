@@ -7,6 +7,11 @@ import (
 	"os"
 	"sync"
 	"time"
+
+	"github.com/nats-io/nats.go"
+
+	"github.com/numkem/msgscript/plugins"
+	"github.com/numkem/msgscript/store"
 )
 
 const (
@@ -96,4 +101,43 @@ func createTempFile(pattern string) (*os.File, error) {
 type Executor interface {
 	HandleMessage(context.Context, *Message, ReplyFunc)
 	Stop()
+}
+
+func StartAllExecutors(ctx context.Context, scriptStore store.ScriptStore, plugins []plugins.PreloadFunc, nc *nats.Conn) map[string]Executor {
+	executors := make(map[string]Executor)
+
+	executors[EXECUTOR_LUA_NAME] = NewLuaExecutor(ctx, scriptStore, plugins, nc)
+	executors[EXECUTOR_WASM_NAME] = NewWasmExecutor(ctx, scriptStore, nil, nil)
+
+	podmanExec, err := NewPodmanExecutor(ctx, scriptStore)
+	if err != nil {
+		podmanExec = nil
+	}
+	executors[EXECUTOR_PODMAN_NAME] = podmanExec
+
+	return executors
+}
+
+func ExecutorByName(name string, executors map[string]Executor) (Executor, error) {
+	// Handle the message by invoking the corresponding Lua script
+	// Check if the executor exists
+	exec, found := executors[name]
+	if !found {
+		exec = executors[EXECUTOR_LUA_NAME]
+	}
+
+	// Check if the executor is enabled
+	if exec == nil {
+		return nil, fmt.Errorf("executor %s isn't enabled", name)
+	}
+
+	return exec, nil
+}
+
+func StopAllExecutors(executors map[string]Executor) {
+	for _, exec := range executors {
+		if exec !=  nil {
+			exec.Stop()
+		}
+	}
 }

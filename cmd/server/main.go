@@ -97,12 +97,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	luaExecutor := executor.NewLuaExecutor(ctx, scriptStore, plugins, nc)
-	wasmExecutor := executor.NewWasmExecutor(ctx, scriptStore, nil, nil)
-	podmanExecutor, err := executor.NewPodmanExecutor(ctx, scriptStore)
-	if err != nil {
-		log.Warnf("failed to create podman executor: %v", err)
-	}
+	executors := executor.StartAllExecutors(ctx, scriptStore, plugins, nc)
 
 	log.Info("Starting message watch...")
 
@@ -126,8 +121,8 @@ func main() {
 
 		fields := log.Fields{
 			"subject": m.Subject,
-			"raw": m.Raw,
-			"async": m.Async,
+			"raw":     m.Raw,
+			"async":   m.Async,
 		}
 
 		// The above unmarshalling only applies to the structure of the JSON.
@@ -147,22 +142,19 @@ func main() {
 			err = nc.Publish(msg.Reply, []byte("{}"))
 			if err != nil {
 				log.WithFields(fields).Errorf("failed to reply to message: %v", err)
+				return
 			}
 		} else {
 			messageReply = replier.SyncReply(m, msg)
 		}
 
-		// Handle the message by invoking the corresponding Lua script
-		switch m.Executor {
-		case executor.EXECUTOR_LUA_NAME:
-			luaExecutor.HandleMessage(ctx, m, messageReply)
-		case executor.EXECUTOR_WASM_NAME:
-			wasmExecutor.HandleMessage(ctx, m, messageReply)
-		case executor.EXECUTOR_PODMAN_NAME:
-			podmanExecutor.HandleMessage(ctx, m, messageReply)
-		default:
-			luaExecutor.HandleMessage(ctx, m, messageReply)
+		exec, err := executor.ExecutorByName(m.Executor, executors)
+		if err != nil {
+			log.WithError(err).Error("failed to get executor for message")
+			return
 		}
+
+		exec.HandleMessage(ctx, m, messageReply)
 	})
 	if err != nil {
 		log.Fatalf("Failed to subscribe to NATS subjects: %v", err)
@@ -178,6 +170,5 @@ func main() {
 	cancel()
 
 	log.Info("Received shutdown signal, stopping server...")
-	luaExecutor.Stop()
-	wasmExecutor.Stop()
+	executor.StopAllExecutors(executors)
 }
