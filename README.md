@@ -11,18 +11,24 @@
   - [The Function](#the-function)
     - [In Normal mode](#in-normal-mode)
     - [In HTTP mode](#in-http-mode)
-    - [Return value](#return-value)
-  - [HTTP handler](#http-handler)
+    - [In HTTP+HTML mode](#in-httphtml-mode)
+  - [Return value](#return-value)
+- [HTTP handler](#http-handler)
 - [Installation](#installation)
-  - [Single binary](#single-binary)
+  - [Docker container](#docker-container)
   - [NixOS service](#nixos-service)
   - [Building it](#building-it)
 - [Clustering](#clustering)
   - [Adding Scripts](#adding-scripts)
-- [Writing Lua Scripts](#writing-lua-scripts)
-  - [Plugin system](#plugin-system)
-  - [Libraries](#libraries)
-  - [Web "framework" library](#web-framework-library)
+- [Command line flags](#command-line-flags)
+  - [Server options](#server-options)
+- [Executors](#executors)
+  - [Lua](#lua)
+    - [Plugin system](#plugin-system)
+    - [Libraries](#libraries)
+    - [Web "framework" library](#web-framework-library)
+  - [WASM](#wasm)
+  - [Podman](#podman)
 - [Contributing](#contributing)
 - [Support](#support)
 
@@ -35,7 +41,7 @@ TLDR: msgscript is what you could call a poor man's Lambda-like function/applica
 - Single binary
 - Nearly no overheads
 - Good enough performances (RTT of around 10ms for the hello example)
-- Runs Lua functions
+- Runs Lua functions, WASM binaries and Podman containers (no docker)
 - Can use reusable libraries
 - Can add Go based plugins
 - HTTP handler
@@ -136,19 +142,15 @@ curl -X POST -d 'John' http://127.0.0.1:7643/http.hello
 
 ## Installation
 
-### Single binary
+### Docker container
 
-You can download the binary from the release page. There are 2 binaries available: `server` and `cli`. The server is what most people will want. The `cli` is only useful when paired with the `etcd` backend.
+A container is avaible through the ghcr.io container registry. You can use it as so:
 
-The server has the following options:
-- `-backend`: The backend to use. Currently supports `etcd` or `file`. `file` is the default.
-- `-etcdurl`: The URL of the etcd server. It can be multiple through a comma separated list.
-- `-library`: The path to a library directory. It has no defaults. It can be an absolute path or a relative path.
-- `-log`: The log level to use. The options are: `debug`, `info`, `warn`, `error`. It defaults to `info`. 
-- `-natsurl`: The URL of the NATS server.
-- `-plugin`: The path to the plugin directory. It has no defaults. It can be an absolute path or a relative path.
-- `-port`: The port to listen on. It defaults to 7643.
-- `-script`: The path to a script directory. It defaults to the current working directory. It can be an absolute path or a relative path.
+``` sh
+docker pull ghcr.io/numkem/msgscript:latest
+```
+
+It takes either `server` or `cli` as a first parameter.
 
 ### NixOS service
 
@@ -171,6 +173,8 @@ Being a standalone Go binary, you can build each of the binaries like so:
  go build ./cmd/cli    # Generates the CLI binary
  ```
 
+It requires the btrfs headers (podman), gpgme (podman) and wastime (wasm) as dependancies.
+
 ## Clustering
 
 When msgscript is running in cluster mode, it's possible to use it with etcd. You can use the `etcd` backend to do that.
@@ -189,7 +193,29 @@ This command adds the `pushover.lua` script from the `examples` directory, assoc
 
 The `-subject` and `-name` flags are optional. If they are not provided, they will be read through the headers contained in the file.
 
-## Writing Lua Scripts
+## Command line flags
+
+### Server options
+
+You can download the binary from the release page. There are 2 binaries available: `server` and `cli`. The server is what most people will want. The `cli` is only useful when paired with the `etcd` backend.
+
+The server has the following options:
+- `-backend`: The backend to use. Currently supports `etcd` or `file`. `file` is the default.
+- `-etcdurl`: The URL of the etcd server. It can be multiple through a comma separated list.
+- `-library`: The path to a library directory. It has no defaults. It can be an absolute path or a relative path.
+- `-log`: The log level to use. The options are: `debug`, `info`, `warn`, `error`. It defaults to `info`. 
+- `-natsurl`: The URL of the NATS server.
+- `-plugin`: The path to the plugin directory. It has no defaults. It can be an absolute path or a relative path.
+- `-port`: The port to listen on. It defaults to 7643.
+- `-script`: The path to a script directory. It defaults to the current working directory. It can be an absolute path or a relative path.
+
+## Executors
+
+Msgscript supports many different executors or more simply, a way to execute a script. The following shows how to use them.
+
+### Lua
+
+This is the default executor.
 
 When writing Lua scripts for msgscript, you have access to additional built-in modules:
 
@@ -219,7 +245,7 @@ end
 
 Some examples scripts are provided in the `examples` folder.
 
-### Plugin system
+#### Plugin system
 
 While there is already a lot of modules added to the Lua execution environment, it is possible to add more using the included plugin system.
 
@@ -252,7 +278,7 @@ Plugins currently included in this repository:
     
 **NOTE:** The plugin file needs to have the `.so` extension.
 
-### Libraries
+#### Libraries
 
 Libraries are Lua files that gets prepended to the script that needs to be run. These libraries can be used within other scripts using the `require` header like this:
 
@@ -264,7 +290,7 @@ In this case, it will load the library named `foo` and prepend it to the running
 
 Some example libraries are available [here](examples/libs).
 
-### Web "framework" library
+#### Web "framework" library
 
 The [web.lua](examples/libs/web.lua) library contains a very simple web framework. It's used in the example below:
 
@@ -301,6 +327,42 @@ While not extensive, these examples shows how to use the library.
 Namely:
 - The function handling the endpoint returns 4 values: the mustache template, the data for the template, the HTTP code and HTTP headers
 - If the template is either empty (`""`) or nil, it will be assumed that it's returning a JSON document. The `Content-Type` will be set as such.
+
+### WASM
+
+Binaires compiled targetting WASM can be used. Some examples are provided in the `examples/wasm` directory.
+
+The format required in the store looks like this:
+
+```
+--* subject: funcs.wasm
+--* name: wasm
+--* executor: wasm
+/home/numkem/src/msgscript/examples/wasm/c/c.wasm
+```
+
+The import parts are `subject`, `name` which are common with all other executors. The `executor` key needs to be set to `wasm`. The content is the path to the WASM executable.
+
+### Podman
+
+The format requires in the store looks like this:
+
+```
+--* subject: funcs.hello
+--* name: podman
+--* executor: podman
+{
+    "image": "hello-world"
+}
+```
+
+Like for WASM, it takes the same important keys. The content of the file can be:
+
+| Key          | Description                                                                |
+|:-------------|:---------------------------------------------------------------------------|
+| `image`      | Container image name                                                       |
+| `mounts`     | List of mounts in the same format you would write them on the command line |
+| `privileged` | true/false if the container should run with more permissions               |
 
 ## Contributing
 
