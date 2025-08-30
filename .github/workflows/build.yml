@@ -29,7 +29,7 @@ jobs:
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y btrfs-progs libgpgme-dev
+        sudo apt-get install -y libbtrfs-dev libgpgme-dev
 
         curl -sSf https://wasmtime.dev/install.sh | bash
         echo "$HOME/.wasmtime/bin" >> $GITHUB_PATH
