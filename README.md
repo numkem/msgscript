@@ -21,6 +21,11 @@
 - [Clustering](#clustering)
   - [Adding Scripts](#adding-scripts)
 - [Command line flags](#command-line-flags)
+  - [Cli options](#cli-options)
+    - [Commands](#commands)
+    - [dev](#dev)
+    - [devhttp](#devhttp)
+    - [Command line options](#command-line-options)
   - [Server options](#server-options)
 - [Executors](#executors)
   - [Lua](#lua)
@@ -42,8 +47,8 @@ TLDR: msgscript is what you could call a poor man's Lambda-like function/applica
 - Nearly no overheads
 - Good enough performances (RTT of around 10ms for the hello example)
 - Runs Lua functions, WASM binaries and Podman containers (no docker)
-- Can use reusable libraries
-- Can add Go based plugins
+- Can use reusable libraries in Lua
+- Can add Go based plugins in Lua
 - HTTP handler
 - Script storage either as flat files or in etcd
 - Can be scaled up with multiples instances through locking (requires etcd)
@@ -194,6 +199,45 @@ This command adds the `pushover.lua` script from the `examples` directory, assoc
 The `-subject` and `-name` flags are optional. If they are not provided, they will be read through the headers contained in the file.
 
 ## Command line flags
+
+### Cli options
+
+The `cli` binary helps with managing the scripts in the message store and for helping with developing scripts.
+
+#### Commands
+
+  add         Add a script to the backend by reading the provided lua file
+  completion  Generate the autocompletion script for the specified shell
+  dev         Executes the script locally like how the server would
+  devhttp     Starts a webserver that will run only to receive request from this script
+  help        Help about any command
+  lib         library related commands
+  list        list all the scripts registered in the store
+  rm          Remove an existing script
+  
+The commands that manages scripts (add, list, rm) are not really useful when using the file base store.
+
+#### dev
+
+Useful for developing scripts that aren't http based (webhooks).
+
+First argument is the script in question. It will return the script's output.
+
+#### devhttp
+
+Useful for developing scripts that are http based (webhooks).
+
+First argument is the script in question. You can then reach your script at `http://localhost:7634/<subject>/`. The script is reloaded from the store on every HTTP request so you don't have to restart the command each time.
+
+#### Command line options
+
+Flags:
+  -b, --backend string    The name of the backend to use to manipulate the scripts (default "etcd")
+  -e, --etcdurls string   Endpoints to connect to etcd (default "localhost:2379")
+  -x, --executor string   Which executor to use. Either lua or wasm (default "lua")
+  -h, --help              help for msgscript
+  -L, --log string        set the logger to this log level (default "info")
+  -u, --natsurl string    NATS url to reach (default "nats://localhost:4222")
 
 ### Server options
 
