@@ -49,11 +49,10 @@ jobs:
         mkdir -p dist
 
         go build -ldflags="-s -w -linkmode external -extldflags '-static'" -o "dist/msgscript-${{ matrix.platform }}" ./cmd/server
-
         go build -ldflags="-s -w -linkmode external -extldflags '-static'" -o "dist/msgscript-cli-${{ matrix.platform }}" ./cmd/cli
 
     - name: Upload artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: binaries-${{ matrix.platform }}
         path: dist/*
@@ -67,7 +66,7 @@ jobs:
     - uses: actions/checkout@v4
 
     - name: Download all artifacts
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         path: artifacts
 
