@@ -16,12 +16,12 @@ jobs:
           - goos: linux
             goarch: amd64
             platform: x86_64-linux
-          - goos: linux
-            goarch: arm64
-            platform: aarch64-linux
-          - goos: darwin
-            goarch: arm64
-            platform: aarch64-darwin
+          # - goos: linux
+          #   goarch: arm64
+          #   platform: aarch64-linux
+          # - goos: darwin
+          #   goarch: arm64
+          #   platform: aarch64-darwin
 
     steps:
     - uses: actions/checkout@v4
