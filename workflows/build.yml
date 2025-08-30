@@ -1,0 +1,98 @@
+name: Build binaires and Release
+
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            platform: x86_64-linux
+          - goos: linux
+            goarch: arm64
+            platform: aarch64-linux
+          - goos: darwin
+            goarch: arm64
+            platform: aarch64-darwin
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y btrfs-progs libgpgme-dev
+
+        curl -sSf https://wasmtime.dev/install.sh | bash
+        echo "$HOME/.wasmtime/bin" >> $GITHUB_PATH
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+
+    - name: Build binaries
+      env:
+        GOOS: ${{ matrix.goos }}
+        GOARCH: ${{ matrix.goarch }}
+        CGO_ENABLED: 1
+        CC: gcc
+      run: |
+        mkdir -p dist
+
+        go build -ldflags="-s -w -linkmode external -extldflags '-static'" -o "dist/msgscript-${{ matrix.platform }}" ./cmd/server
+
+        go build -ldflags="-s -w -linkmode external -extldflags '-static'" -o "dist/msgscript-cli-${{ matrix.platform }}" ./cmd/cli
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: binaries-${{ matrix.platform }}
+        path: dist/*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Download all artifacts
+      uses: actions/download-artifact@v3
+      with:
+        path: artifacts
+
+    - name: Prepare release assets
+      run: |
+        mkdir -p release
+
+        for artifact_dir in artifacts/binaries-*; do
+          if [ -d "$artifact_dir" ]; then
+            PLATFORM=$(basename "$artifact_dir" | sed 's/binaries-//')
+
+            cd "$artifact_dir"
+            zip -r "../../release/msgscript-$PLATFORM.zip" *
+            cd - > /dev/null
+
+            cp "$artifact_dir"/* release/
+          fi
+        done
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: release/*
+        generate_release_notes: true
+        draft: false
+        prerelease: ${{ contains(github.ref, '-') }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
