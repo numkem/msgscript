@@ -88,15 +88,6 @@
             cp ${name}.so $out/
           '';
         };
-
-      mkOverlay = system: {
-        default = (
-          final: prev: {
-            msgscript-cli = self.packages.${system}.cli;
-            msgscript-server = self.packages.${system}.server;
-          }
-        );
-      };
     in
     {
       packages.x86_64-linux =
@@ -180,9 +171,9 @@
           ];
         };
 
-      overlays = {
-        aarch64-linux = mkOverlay "aarch64-linux";
-        x86_64-linux = mkOverlay "x86_64-linux";
+      overlays = final: prev: {
+        msgscript-cli = self.packages.${final.system}.cli;
+        msgscript-server = self.packages.${final.system}.server;
       };
 
       nixosModules.default = import ./nix/modules/default.nix;
