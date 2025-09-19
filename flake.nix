@@ -94,6 +94,16 @@
         let
           pkgs = import nixpkgs { system = "x86_64-linux"; };
           lib = pkgs.lib;
+
+          plugins =
+            let
+              pluginDirs = lib.remove "" (
+                lib.mapAttrsToList (name: kind: if kind == "directory" then name else "") (
+                  builtins.readDir "${self}/plugins/"
+                )
+              );
+            in
+            lib.genAttrs pluginDirs (name: mkPlugin pkgs name "${self}/plugins/${name}");
         in
         rec {
           cli = mkCli pkgs;
@@ -104,6 +114,11 @@
             name = "msgscript-all-plugins";
             paths = lib.attrValues plugins;
           };
+        };
+      packages.aarch64-linux =
+        let
+          pkgs = import nixpkgs { system = "aarch64-linux"; };
+          lib = pkgs.lib;
 
           plugins =
             let
@@ -114,11 +129,6 @@
               );
             in
             lib.genAttrs pluginDirs (name: mkPlugin pkgs name "${self}/plugins/${name}");
-        };
-      packages.aarch64-linux =
-        let
-          pkgs = import nixpkgs { system = "aarch64-linux"; };
-          lib = pkgs.lib;
         in
         rec {
           cli = mkCli "x86_64-linux";
@@ -129,16 +139,6 @@
             name = "msgscript-all-plugins";
             paths = lib.attrValues plugins;
           };
-
-          plugins =
-            let
-              pluginDirs = lib.remove "" (
-                lib.mapAttrsToList (name: kind: if kind == "directory" then name else "") (
-                  builtins.readDir "${self}/plugins/"
-                )
-              );
-            in
-            lib.genAttrs pluginDirs (name: mkPlugin pkgs name "${self}/plugins/${name}");
         };
 
       devShells.x86_64-linux.default =
@@ -171,7 +171,7 @@
           ];
         };
 
-      overlays = final: prev: {
+      overlays.default = final: prev: {
         msgscript-cli = self.packages.${final.system}.cli;
         msgscript-server = self.packages.${final.system}.server;
       };
