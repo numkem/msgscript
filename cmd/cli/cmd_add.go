@@ -46,30 +46,30 @@ func addCmdRun(cmd *cobra.Command, args []string) {
 	name := cmd.Flag("name").Value.String()
 
 	// Try to read the file to see if we can find headers
-	s, err := scriptLib.ReadFile(args[0])
+	scr, err := scriptLib.ReadFile(args[0])
 	if err != nil {
 		cmd.PrintErrf("failed to read the script file %s: %v", args[0], err)
 		return
 	}
 	if subject == "" {
-		if s.Subject == "" {
+		if scr.Subject == "" {
 			cmd.PrintErrf("subject is required")
 			return
 		}
 
-		subject = s.Subject
+		subject = scr.Subject
 	}
 	if name == "" {
-		if s.Name == "" {
+		if scr.Name == "" {
 			cmd.PrintErrf("name is required")
 			return
 		}
 
-		name = s.Name
+		name = scr.Name
 	}
 
 	// Add the script to etcd under the given subject
-	err = scriptStore.AddScript(cmd.Context(), subject, name, s.Content)
+	err = scriptStore.AddScript(cmd.Context(), subject, name, scr)
 	if err != nil {
 		cmd.PrintErrf("Failed to add script to etcd: %v", err)
 		return

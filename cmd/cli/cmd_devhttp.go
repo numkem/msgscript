@@ -16,6 +16,7 @@ import (
 
 	"github.com/numkem/msgscript/executor"
 	msgplugin "github.com/numkem/msgscript/plugins"
+	"github.com/numkem/msgscript/script"
 	scriptLib "github.com/numkem/msgscript/script"
 	"github.com/numkem/msgscript/store"
 )
@@ -152,7 +153,7 @@ func (p *devHttpProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Add only the currently worked on file
-	b, err := os.ReadFile(p.scriptFile)
+	scr, err := script.ReadFile(p.scriptFile)
 	if err != nil {
 		e := fmt.Errorf("failed to read script file %s: %w", p.scriptFile, err)
 		log.Error(e.Error())
@@ -160,7 +161,8 @@ func (p *devHttpProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(e.Error()))
 		return
 	}
-	p.store.AddScript(p.context, s.Subject, s.Name, b)
+
+	p.store.AddScript(p.context, s.Subject, s.Name, scr)
 
 	// Create a new empty store at the end of each request
 	defer emptyStore(p.store, p.libraryDir)
