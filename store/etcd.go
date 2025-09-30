@@ -2,12 +2,14 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/numkem/msgscript/script"
 	log "github.com/sirupsen/logrus"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/etcd/client/v3/concurrency"
@@ -52,7 +54,7 @@ func etcdEndpoints(endpoints string) []string {
 }
 
 // NewEtcdScriptStore creates a new instance of EtcdScriptStore
-func NewEtcdScriptStore(endpoints string) (*EtcdScriptStore, error) {
+func NewEtcdScriptStore(endpoints string) (ScriptStore, error) {
 	log.Debugf("Attempting to connect to etcd @ %s", endpoints)
 
 	client, err := EtcdClient(endpoints)
@@ -74,11 +76,16 @@ func (e *EtcdScriptStore) getKey(subject, name string) string {
 }
 
 // AddScript adds a new Lua script under the given subject with a unique ID
-func (e *EtcdScriptStore) AddScript(ctx context.Context, subject, name string, script []byte) error {
+func (e *EtcdScriptStore) AddScript(ctx context.Context, subject, name string, scr *script.Script) error {
 	key := e.getKey(subject, name)
 
 	// Store script in etcd
-	_, err := e.client.Put(ctx, key, string(script))
+	val, err := encodeValue(scr)
+	if err != nil {
+		return fmt.Errorf("failed to encode script: %w", err)
+	}
+
+	_, err = e.client.Put(ctx, key, string(val))
 	if err != nil {
 		return fmt.Errorf("failed to add script for subject '%s': %w", subject, err)
 	}
@@ -87,8 +94,28 @@ func (e *EtcdScriptStore) AddScript(ctx context.Context, subject, name string, s
 	return nil
 }
 
+func decodeValue(b []byte) (*script.Script, error) {
+	// Decode json
+	scr := &script.Script{}
+	err := json.Unmarshal(b, scr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal script: %v", err)
+	}
+
+	return scr, nil
+}
+
+func encodeValue(scr *script.Script) ([]byte, error) {
+	b, err := json.Marshal(scr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal script: %v", err)
+	}
+
+	return b, nil
+}
+
 // GetScripts retrieves all scripts associated with a subject
-func (e *EtcdScriptStore) GetScripts(ctx context.Context, subject string) (map[string][]byte, error) {
+func (e *EtcdScriptStore) GetScripts(ctx context.Context, subject string) (map[string]*script.Script, error) {
 	keyPrefix := strings.Join([]string{e.prefix, subject}, "/")
 
 	// Fetch all scripts under the subject's prefix
@@ -97,9 +124,14 @@ func (e *EtcdScriptStore) GetScripts(ctx context.Context, subject string) (map[s
 		return nil, fmt.Errorf("failed to get scripts for subject '%s': %w", subject, err)
 	}
 
-	scripts := make(map[string][]byte)
+	scripts := make(map[string]*script.Script)
 	for _, kv := range resp.Kvs {
-		scripts[string(kv.Key)] = kv.Value
+		scr, err := decodeValue(kv.Value)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode script: %w", err)
+		}
+
+		scripts[string(kv.Key)] = scr
 	}
 
 	log.Debugf("Retrieved %d scripts for subject %s", len(scripts), subject)

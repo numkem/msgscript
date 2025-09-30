@@ -1,3 +1,5 @@
+//go:build podman
+
 package executor
 
 import (

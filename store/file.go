@@ -18,31 +18,35 @@ type FileScriptStore struct {
 	libs     *sync.Map
 }
 
-func NewFileScriptStore(scriptPath string, libraryPath string) (*FileScriptStore, error) {
+type fileStoreMapValue map[string]*script.Script
+
+func NewFileScriptStore(scriptPath string, libraryPath string) (ScriptStore, error) {
 	return &FileScriptStore{
 		scripts: new(sync.Map),
 		libs:    new(sync.Map),
 	}, nil
 }
 
-func (f *FileScriptStore) GetScripts(ctx context.Context, subject string) (map[string][]byte, error) {
+func (f *FileScriptStore) GetScripts(ctx context.Context, subject string) (map[string]*script.Script, error) {
 	res, ok := f.scripts.Load(subject)
 	if !ok {
 		return nil, fmt.Errorf("script not found for subject: %s", subject)
 	}
 
-	return res.(map[string][]byte), nil
+	r, _ := res.(fileStoreMapValue)
+
+	return r, nil
 }
 
-func (f *FileScriptStore) AddScript(ctx context.Context, subject, name string, script []byte) error {
+func (f *FileScriptStore) AddScript(ctx context.Context, subject, name string, scr *script.Script) error {
 	sl, ok := f.scripts.Load(subject)
 	if !ok {
-		f.scripts.Store(subject, make(map[string][]byte))
+		f.scripts.Store(subject, make(fileStoreMapValue))
 		sl, _ = f.scripts.Load(subject)
 	}
 
-	scrm := sl.(map[string][]byte)
-	scrm[name] = script
+	scrm := sl.(fileStoreMapValue)
+	scrm[name] = scr
 	f.scripts.Store(subject, scrm)
 
 	return nil
@@ -54,7 +58,7 @@ func (f *FileScriptStore) DeleteScript(ctx context.Context, subject, name string
 		return nil
 	}
 
-	scrm := sl.(map[string][]byte)
+	scrm := sl.(fileStoreMapValue)
 	delete(scrm, name)
 
 	f.scripts.Store(subject, scrm)
@@ -73,14 +77,14 @@ func (f *FileScriptStore) TakeLock(ctx context.Context, path string) (bool, erro
 func (f *FileScriptStore) WatchScripts(ctx context.Context, subject string, onChange func(subject, path string, script []byte, deleted bool)) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
-		log.Fatalf("failed to create watcher: %w", err)
+		log.Fatalf("failed to create watcher: %v", err)
 	}
 	defer watcher.Close()
 
 	// Add the file to the watcher
 	err = watcher.Add(f.filePath)
 	if err != nil {
-		log.Fatalf("failed to add file to watcher: %w", err)
+		log.Fatalf("failed to add file to watcher: %v", err)
 	}
 
 	log.Infof("Started watching file: %s", f.filePath)
@@ -98,7 +102,7 @@ func (f *FileScriptStore) WatchScripts(ctx context.Context, subject string, onCh
 
 				scr, err := script.ReadFile(filepath.Join(f.filePath, event.Name))
 				if err != nil {
-					log.Errorf("failed to read script file %s: %w", f.filePath, err)
+					log.Errorf("failed to read script file %s: %v", f.filePath, err)
 				}
 
 				// Trigger the onChange callback for each script
@@ -109,7 +113,7 @@ func (f *FileScriptStore) WatchScripts(ctx context.Context, subject string, onCh
 			if !ok {
 				return
 			}
-			log.Errorf("Watcher error: %w", err)
+			log.Errorf("Watcher error: %v", err)
 
 		case <-ctx.Done():
 			log.Info("Stopping watcher")
@@ -121,7 +125,7 @@ func (f *FileScriptStore) WatchScripts(ctx context.Context, subject string, onCh
 func (f *FileScriptStore) ListSubjects(ctx context.Context) ([]string, error) {
 	var subjects []string
 
-	f.scripts.Range(func(key, value interface{}) bool {
+	f.scripts.Range(func(key, value any) bool {
 		subject := key.(string)
 		subjects = append(subjects, subject)
 

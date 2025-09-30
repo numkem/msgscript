@@ -18,9 +18,9 @@ const (
 )
 
 type ScriptStore interface {
-	AddScript(ctx context.Context, subject string, name string, script []byte) error
+	AddScript(ctx context.Context, subject string, name string, scr *script.Script) error
 	DeleteScript(ctx context.Context, subject, name string) error
-	GetScripts(ctx context.Context, subject string) (map[string][]byte, error)
+	GetScripts(ctx context.Context, subject string) (map[string]*script.Script, error)
 	ReleaseLock(ctx context.Context, path string) error
 	TakeLock(ctx context.Context, path string) (bool, error)
 	WatchScripts(ctx context.Context, subject string, onChange func(subject, path string, script []byte, deleted bool))
@@ -66,7 +66,7 @@ func StoreByName(name, etcdEndpoints, scriptDir, libraryDir string) (ScriptStore
 		for subject, namedScripts := range allScripts {
 			for name, scr := range namedScripts {
 				log.WithField("subject", subject).WithField("name", name).Debug("loading script")
-				scriptStore.AddScript(context.Background(), subject, name, scr.Content)
+				scriptStore.AddScript(context.Background(), subject, name, scr)
 				nbScripts++
 			}
 		}

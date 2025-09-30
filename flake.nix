@@ -8,62 +8,8 @@
   outputs =
     { self, nixpkgs }:
     let
-      version = "0.5.0";
-      vendorHash = "sha256-LcgdJIsn3/fHv3NGvGdfq/Y3N7CTuIH/b5Rv5tEMUg8=";
-
-      mkCli =
-        pkgs:
-        let
-          wasmtime = pkgs.callPackage ./nix/pkgs/wasmtime.nix { };
-        in
-        pkgs.buildGoModule {
-          pname = "msgscript-cli";
-          inherit version vendorHash;
-
-          src = self;
-
-          subPackages = [ "cmd/cli" ];
-
-          nativeBuildInputs = [ pkgs.pkg-config ];
-
-          buildInputs = [
-            wasmtime.dev
-            pkgs.btrfs-progs
-            pkgs.gpgme
-          ];
-
-          postInstall = ''
-            mv $out/bin/cli $out/bin/msgscriptcli
-          '';
-        };
-
-      mkServer =
-        pkgs:
-        let
-          wasmtime = pkgs.callPackage ./nix/pkgs/wasmtime.nix { };
-        in
-        pkgs.buildGoModule {
-          pname = "msgscript";
-          inherit version vendorHash;
-
-          src = self;
-
-          subPackages = [ "cmd/server" ];
-
-          nativeBuildInputs = [ pkgs.pkg-config ];
-
-          buildInputs = [
-            wasmtime.dev
-            pkgs.btrfs-progs
-            pkgs.gpgme
-          ];
-
-          doCheck = false; # Requires networking, will just timeout
-
-          postInstall = ''
-            mv $out/bin/server $out/bin/msgscript
-          '';
-        };
+      version = "0.6.0";
+      vendorHash = "sha256-+sI9iQsfaxPlVoQFCLDHGrl7VHgnq1iLOrRj57Fpudc=";
 
       mkPlugin =
         pkgs: name: path:
@@ -94,10 +40,16 @@
         let
           pkgs = import nixpkgs { system = "x86_64-linux"; };
           lib = pkgs.lib;
+
+          wasmtime = pkgs.callPackage ./nix/pkgs/wasmtime.nix { };
         in
         rec {
-          cli = mkCli pkgs;
-          server = mkServer pkgs;
+          cli = pkgs.callPackage ./nix/pkgs/cli.nix {
+            inherit wasmtime version vendorHash;
+          };
+          server = pkgs.callPackage ./nix/pkgs/server.nix {
+            inherit wasmtime version vendorHash;
+          };
           default = server;
 
           allPlugins = pkgs.symlinkJoin {
@@ -119,10 +71,16 @@
         let
           pkgs = import nixpkgs { system = "aarch64-linux"; };
           lib = pkgs.lib;
+
+          wasmtime = pkgs.callPackage ./nix/pkgs/wasmtime.nix { };
         in
         rec {
-          cli = mkCli "x86_64-linux";
-          server = mkServer "x86_64-linux";
+          cli = pkgs.callPackage ./nix/pkgs/cli.nix {
+            inherit wasmtime version vendorHash;
+          };
+          server = pkgs.callPackage ./nix/pkgs/server.nix {
+            inherit wasmtime version vendorHash;
+          };
           default = server;
 
           allPlugins = pkgs.symlinkJoin {

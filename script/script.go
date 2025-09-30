@@ -17,12 +17,12 @@ const (
 )
 
 type Script struct {
-	Content  []byte
-	Executor string
-	HTML     bool
-	LibKeys  []string
-	Name     string
-	Subject  string
+	Content  []byte   `json:"content"`
+	Executor string   `json:"executor"`
+	HTML     bool     `json:"is_html"`
+	LibKeys  []string `json:"libraries"`
+	Name     string   `json:"name"`
+	Subject  string   `json:"subject"`
 }
 
 func ReadFile(filename string) (*Script, error) {
@@ -72,10 +72,6 @@ func getHeaderValue(line string) string {
 	return ""
 }
 
-func headerKey(key string) string {
-	return fmt.Sprintf("%s %s: ", HEADER_PATTERN, key)
-}
-
 func (s *Script) Read(f io.Reader) error {
 	scanner := bufio.NewScanner(f)
 	var err error
@@ -107,7 +103,7 @@ func (s *Script) Read(f io.Reader) error {
 		}
 	}
 
-	s.Content = []byte(b.String())
+	s.Content = []byte(strings.TrimSuffix(b.String(), "\n"))
 
 	return nil
 }

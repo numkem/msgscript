@@ -8,6 +8,7 @@ import (
 	"path"
 	"strings"
 
+	"github.com/numkem/msgscript/script"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -16,13 +17,13 @@ type DevStore struct {
 	// First: subject
 	// Second: name
 	// Value: content
-	scripts   map[string]map[string][]byte
+	scripts   map[string]map[string]*script.Script
 	libraries map[string][]byte
 }
 
 func NewDevStore(libraryPath string) (ScriptStore, error) {
 	store := &DevStore{
-		scripts:   make(map[string]map[string][]byte),
+		scripts:   make(map[string]map[string]*script.Script),
 		libraries: make(map[string][]byte),
 	}
 
@@ -63,13 +64,13 @@ func NewDevStore(libraryPath string) (ScriptStore, error) {
 	return store, nil
 }
 
-func (s *DevStore) onChange(subject, name string, script []byte, del bool) {
+func (s *DevStore) onChange(subject, name string, scr *script.Script, del bool) {
 	if !del {
 		if _, found := s.scripts[subject]; !found {
-			s.scripts[subject] = make(map[string][]byte)
+			s.scripts[subject] = make(map[string]*script.Script)
 		}
 
-		s.scripts[subject][name] = script
+		s.scripts[subject][name] = scr
 	} else {
 		delete(s.scripts[subject], name)
 	}
@@ -81,7 +82,7 @@ func (s *DevStore) WatchScripts(ctx context.Context, subject string, onChange fu
 	onChange(subject, "", nil, false)
 }
 
-func (s *DevStore) AddScript(ctx context.Context, subject, name string, script []byte) error {
+func (s *DevStore) AddScript(ctx context.Context, subject, name string, script *script.Script) error {
 	s.onChange(subject, name, script, false)
 
 	return nil
@@ -93,7 +94,7 @@ func (s *DevStore) DeleteScript(ctx context.Context, subject, name string) error
 	return nil
 }
 
-func (s *DevStore) GetScripts(ctx context.Context, subject string) (map[string][]byte, error) {
+func (s *DevStore) GetScripts(ctx context.Context, subject string) (map[string]*script.Script, error) {
 	return s.scripts[subject], nil
 }
 

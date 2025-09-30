@@ -1,6 +1,9 @@
+//go:build wasm
+
 package executor
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,7 +17,6 @@ import (
 	scriptLib "github.com/numkem/msgscript/script"
 	msgstore "github.com/numkem/msgscript/store"
 	log "github.com/sirupsen/logrus"
-	"golang.org/x/net/context"
 )
 
 type WasmExecutor struct {
@@ -56,8 +58,8 @@ func (we *WasmExecutor) HandleMessage(ctx context.Context, msg *Message, rf Repl
 		ss := strings.Split(path, "/")
 		name := ss[len(ss)-1]
 		fields := log.Fields{
-			"subject": msg.Subject,
-			"path":    name,
+			"subject":  msg.Subject,
+			"path":     name,
 			"executor": "wasm",
 		}
 
@@ -199,4 +201,3 @@ func (we *WasmExecutor) Stop() {
 	we.cancelFunc()
 	log.Debug("WasmExecutor stopped")
 }
-

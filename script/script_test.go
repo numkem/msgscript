@@ -42,14 +42,15 @@ func TestScriptReaderWasmRead(t *testing.T) {
 	assert.Equal(t, "foo", s.Name)
 	assert.Equal(t, "funcs.foobar", s.Subject)
 	assert.Equal(t, "wasm", s.Executor)
-	assert.Equal(t, "/some/path/to/wasm/module.wasm\n", string(s.Content))
+	assert.Equal(t, "/some/path/to/wasm/module.wasm", string(s.Content))
 }
 
 func TestScriptFileReaderWasmFileRead(t *testing.T) {
-	s, err := ReadFile("../examples/wasm/http/wasm.lua")
+	scriptPath := "../examples/wasm/http/wasm.lua"
+	s, err := ReadFile(scriptPath)
 	assert.Nil(t, err)
 
 	assert.Equal(t, "wasm", s.Name)
 	assert.Equal(t, "funcs.wasm", s.Subject)
-	assert.Equal(t, "/home/numkem/src/msgscript/examples/wasm/http/http.wasm\n", string(s.Content))
+	assert.Contains(t, string(s.Content), "msgscript/examples/wasm/http/http.wasm")
 }

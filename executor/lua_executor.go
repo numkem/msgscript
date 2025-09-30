@@ -53,22 +53,26 @@ func replyWithError(fields log.Fields, rf ReplyFunc, msg string, a ...any) {
 // HandleMessage receives a message, matches it to a Lua script, and executes the script in a new goroutine
 func (le *LuaExecutor) HandleMessage(ctx context.Context, msg *Message, rf ReplyFunc) {
 	fields := log.Fields{
-		"subject": msg.Subject,
+		"subject":  msg.Subject,
 		"executor": "lua",
 	}
 
 	// Look up the Lua script for the given subject
 	scripts, err := le.store.GetScripts(ctx, msg.Subject)
-	if err != nil || scripts == nil {
-		replyWithError(fields, rf, "failed to get scripts for subject %s: %w", msg.Subject, err)
+	if err != nil {
+		replyWithError(fields, rf, "failed to get scripts for subject %s: %v", msg.Subject, err)
 		return
+	}
+
+	if scripts == nil {
+		replyWithError(fields, rf, "no scripts found for subject %s", msg.Subject)
 	}
 
 	errs := make(chan error, len(scripts))
 	var wg sync.WaitGroup
 	r := NewReply()
 	// Loop through each scripts attached to the subject as there might be more than one
-	for path, script := range scripts {
+	for path, scr := range scripts {
 		wg.Add(1)
 
 		ss := strings.Split(path, "/")
@@ -76,7 +80,7 @@ func (le *LuaExecutor) HandleMessage(ctx context.Context, msg *Message, rf Reply
 		fields["path"] = name
 
 		// Run the Lua script in a separate goroutine to handle the message for each script
-		go func(content []byte) {
+		go func(scr *scriptLib.Script) {
 			defer wg.Done()
 
 			tmp, err := os.MkdirTemp(os.TempDir(), "msgscript-lua-*s")
@@ -92,14 +96,7 @@ func (le *LuaExecutor) HandleMessage(ctx context.Context, msg *Message, rf Reply
 				return
 			}
 
-			// Read the script to get the headers (for the libraries for example)
-			s, err := scriptLib.ReadString(string(content))
-			if err != nil {
-				errs <- fmt.Errorf("failed to read script: %w", err)
-				return
-			}
-
-			libs, err := le.store.LoadLibrairies(ctx, s.LibKeys)
+			libs, err := le.store.LoadLibrairies(ctx, scr.LibKeys)
 			if err != nil {
 				errs <- fmt.Errorf("failed to read librairies: %w", err)
 				return
@@ -117,7 +114,7 @@ func (le *LuaExecutor) HandleMessage(ctx context.Context, msg *Message, rf Reply
 			}
 			defer le.store.ReleaseLock(ctx, name)
 
-			log.WithFields(fields).WithField("isHTML", s.HTML).Debug("executing script")
+			log.WithFields(fields).WithField("isHTML", scr.HTML).Debug("executing script")
 
 			L := lua.NewState()
 			tctx, tcan := context.WithTimeout(le.ctx, MAX_LUA_RUNNING_TIME)
@@ -147,11 +144,11 @@ func (le *LuaExecutor) HandleMessage(ctx context.Context, msg *Message, rf Reply
 				sb.Write(l)
 				sb.WriteString("\n")
 			}
-			sb.Write(content)
+			sb.Write(scr.Content)
 			log.WithFields(fields).Debugf("script:\n%+s\n\n", sb.String())
 
 			res := &ScriptResult{
-				IsHTML:  s.HTML,
+				IsHTML:  scr.HTML,
 				Headers: make(map[string]string),
 			}
 			if err := L.DoString(sb.String()); err != nil {
@@ -163,7 +160,7 @@ func (le *LuaExecutor) HandleMessage(ctx context.Context, msg *Message, rf Reply
 			}
 
 			// Retrieve the result from the Lua state (assuming it's a string)
-			if s.HTML {
+			if scr.HTML {
 				// If the message is set to return HTML, we pass 2 things to the fonction named after the HTTP
 				// method received ex: POST(), GET()...
 				// The 2 things are:
@@ -177,7 +174,7 @@ func (le *LuaExecutor) HandleMessage(ctx context.Context, msg *Message, rf Reply
 				//   - The body of the message
 				le.executeRawMessage(fields, L, r, msg, res, name)
 			}
-		}(script)
+		}(scr)
 	}
 	wg.Wait()
 	log.WithField("subject", msg.Subject).Debugf("finished running %d scripts", len(scripts))
