@@ -8,8 +8,8 @@
   outputs =
     { self, nixpkgs }:
     let
-      version = "0.6.3";
-      vendorHash = "sha256-LcgdJIsn3/fHv3NGvGdfq/Y3N7CTuIH/b5Rv5tEMUg8=";
+      version = "0.7.0";
+      vendorHash = "sha256-IsLAIKYuKhlD71fad8FuayTFbdQJla4ifjs8TexXDYQ=";
 
       mkPlugin =
         pkgs: name: path:
@@ -40,15 +40,13 @@
         let
           pkgs = import nixpkgs { system = "x86_64-linux"; };
           lib = pkgs.lib;
-
-          wasmtime = pkgs.callPackage ./nix/pkgs/wasmtime.nix { };
         in
         rec {
           cli = pkgs.callPackage ./nix/pkgs/cli.nix {
-            inherit wasmtime version vendorHash;
+            inherit version vendorHash;
           };
           server = pkgs.callPackage ./nix/pkgs/server.nix {
-            inherit wasmtime version vendorHash;
+            inherit version vendorHash;
           };
           default = server;
 
@@ -71,15 +69,13 @@
         let
           pkgs = import nixpkgs { system = "aarch64-linux"; };
           lib = pkgs.lib;
-
-          wasmtime = pkgs.callPackage ./nix/pkgs/wasmtime.nix { };
         in
         rec {
           cli = pkgs.callPackage ./nix/pkgs/cli.nix {
-            inherit wasmtime version vendorHash;
+            inherit version vendorHash;
           };
           server = pkgs.callPackage ./nix/pkgs/server.nix {
-            inherit wasmtime version vendorHash;
+            inherit version vendorHash;
           };
           default = server;
 
@@ -114,6 +110,8 @@
 
             # wasm
             tinygo
+            wasmtime
+            wasmtime.dev
 
             # Deps for podman
             pkg-config
@@ -127,6 +125,11 @@
             gopls
             lua-language-server
           ];
+
+          shellHook = ''
+            export GOOS=linux
+            export GOARCH=amd64
+          '';
         };
 
       overlays.default = final: prev: {
