@@ -2,17 +2,22 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"flag"
 	"os"
 	"os/signal"
 	"strings"
-	"syscall"
 	"time"
 
 	natsserver "github.com/nats-io/nats-server/v2/server"
 	"github.com/nats-io/nats.go"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/net/context"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/numkem/msgscript"
 	"github.com/numkem/msgscript/executor"
@@ -21,6 +26,8 @@ import (
 )
 
 var version = "dev"
+var mainTracer = otel.Tracer("msgscript.main")
+
 func main() {
 	// Parse command-line flags
 	backendName := flag.String("backend", msgstore.BACKEND_FILE_NAME, "Storage backend to use (etcd, sqlite, flatfile)")
@@ -33,6 +40,9 @@ func main() {
 	scriptDir := flag.String("script", ".", "Script directory")
 	flag.Parse()
 
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+
 	// Set up logging
 	level, err := log.ParseLevel(*logLevel)
 	if err != nil {
@@ -42,6 +52,20 @@ func main() {
 
 	if os.Getenv("DEBUG") != "" {
 		log.SetLevel(log.DebugLevel)
+	}
+
+	if os.Getenv("TELEMETRY_TRACES") != "" {
+		log.WithField("kind", "traces").Info("Starting telemetry")
+
+		// Init traces
+		otelShutdown, err := setupOTelSDK(ctx)
+		if err != nil {
+			log.Errorf("failed to initialize opentelemetry traces: %v", err)
+			os.Exit(1)
+		}
+		defer func() {
+			err = errors.Join(err, otelShutdown(context.Background()))
+		}()
 	}
 
 	// Create the ScriptStore based on the selected backend
@@ -104,15 +128,33 @@ func main() {
 
 	// Set up a message handler
 	_, err = nc.Subscribe(">", func(msg *nats.Msg) {
+		// Extract trace context from NATS message headers
+		ctx := otel.GetTextMapPropagator().Extract(
+			context.Background(),
+			natsHeaderCarrier(msg.Header),
+		)
+
+		// Start a span for the NATS message handling
+		ctx, span := mainTracer.Start(ctx, "nats.handle_message",
+			trace.WithSpanKind(trace.SpanKindServer),
+			trace.WithAttributes(
+				attribute.String("nats.subject", msg.Subject),
+				attribute.Int("nats.message_size", len(msg.Data)),
+			),
+		)
+		defer span.End()
+
 		log.Debugf("Received message on subject: %s", msg.Subject)
 
 		if strings.HasPrefix(msg.Subject, "_INBOX.") {
+			span.SetAttributes(attribute.Bool("nats.is_inbox", true))
+			span.SetStatus(codes.Ok, "Ignored inbox subject")
 			log.Debugf("Ignoring reply subject %s", msg.Subject)
 			return
 		}
 
 		m := new(executor.Message)
-		err = json.Unmarshal(msg.Data, m)
+		err := json.Unmarshal(msg.Data, m)
 		// if the payload isn't a JSON Message, take it as a whole
 		if err != nil {
 			m.Subject = msg.Subject
@@ -125,6 +167,12 @@ func main() {
 			"raw":     m.Raw,
 			"async":   m.Async,
 		}
+
+		span.SetAttributes(
+			attribute.Bool("message.raw", m.Raw),
+			attribute.Bool("message.async", m.Async),
+			attribute.String("message.executor", m.Executor),
+		)
 
 		// The above unmarshalling only applies to the structure of the JSON.
 		// Even if you feed it another JSON where none of the keys matches,
@@ -139,37 +187,41 @@ func main() {
 		replier := &replier{nc: nc}
 		var messageReply executor.ReplyFunc
 		if m.Async {
+			span.SetAttributes(attribute.String("reply.mode", "async"))
 			messageReply = replier.AsyncReply(m, msg)
 			err = nc.Publish(msg.Reply, []byte("{}"))
 			if err != nil {
+				span.RecordError(err)
+				span.SetStatus(codes.Error, "Failed to publish async reply")
 				log.WithFields(fields).Errorf("failed to reply to message: %v", err)
 				return
 			}
 		} else {
+			span.SetAttributes(attribute.String("reply.mode", "sync"))
 			messageReply = replier.SyncReply(m, msg)
 		}
 
 		exec, err := executor.ExecutorByName(m.Executor, executors)
 		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "Failed to get executor")
 			log.WithError(err).Error("failed to get executor for message")
 			return
 		}
 
+		// Pass the context with trace info to the executor
 		exec.HandleMessage(ctx, m, messageReply)
+		span.SetStatus(codes.Ok, "Message handled")
 	})
 	if err != nil {
 		log.Fatalf("Failed to subscribe to NATS subjects: %v", err)
 	}
 
+	defer func() {
+		log.Info("Received shutdown signal, stopping server...")
+		executor.StopAllExecutors(executors)
+	}()
+
 	// Start HTTP Server
-	go runHTTP(*httpPort, *natsURL)
-
-	// Listen for system interrupts for graceful shutdown
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-	<-sigChan
-	cancel()
-
-	log.Info("Received shutdown signal, stopping server...")
-	executor.StopAllExecutors(executors)
+	runHTTP(*httpPort, *natsURL)
 }

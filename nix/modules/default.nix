@@ -72,12 +72,31 @@ in
       default = "msgscript";
       description = "Group under which msgscript runs.";
     };
+
+    enableTelemetry = mkOption {
+      type = types.bool;
+      default = false;
+      description = "Whether to enable OpenTelemetry for msgscript.";
+    };
+
+    otelEndpoint = mkOption {
+      type = types.str;
+      default = "http://localhost:4317";
+      description = "OpenTelemetry collector endpoint URL.";
+    };
   };
 
   config = mkIf cfg.enable {
     systemd.services.msgscript = {
       description = "Run Lua function from nats subjects";
       restartIfChanged = true;
+
+      environment =
+        { }
+        // (optionalAttrs cfg.enableTelemetry {
+          TELEMETRY_TRACES = "1";
+          OTEL_ENDPOINT = cfg.otelEndpoint;
+        });
 
       serviceConfig = {
         ExecStart = "${pkgs.msgscript-server}/bin/msgscript -backend ${cfg.backend} -etcdurl ${lib.concatStringsSep "," cfg.etcdEndpoints} -natsurl ${cfg.natsUrl} -plugin ${pluginDir} -script ${cfg.scriptDir} -library ${cfg.libraryDir}";

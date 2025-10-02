@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
@@ -86,6 +87,16 @@ type NoScriptFoundError struct{}
 
 func (e *NoScriptFoundError) Error() string {
 	return "No script found for subject"
+}
+
+// Used by executors
+func createTempFile(pattern string) (*os.File, error) {
+	tmpFile, err := os.CreateTemp(os.TempDir(), pattern)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create temp file: %w", err)
+	}
+
+	return tmpFile, nil
 }
 
 type Executor interface {

@@ -12,12 +12,20 @@ import (
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/net/context"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/numkem/msgscript"
 	"github.com/numkem/msgscript/executor"
 )
 
 const DEFAULT_HTTP_PORT = 7643
 const DEFAULT_HTTP_TIMEOUT = 5 * time.Second
+
+var tracer = otel.Tracer("http-nats-proxy")
 
 type httpNatsProxy struct {
 	port string
@@ -40,6 +48,20 @@ func NewHttpNatsProxy(port int, natsURL string) (*httpNatsProxy, error) {
 }
 
 func (p *httpNatsProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// Extract context from incoming request headers
+	ctx := otel.GetTextMapPropagator().Extract(r.Context(), propagation.HeaderCarrier(r.Header))
+	
+	// Start a new span for the HTTP request
+	ctx, span := tracer.Start(ctx, "http.request",
+		trace.WithSpanKind(trace.SpanKindServer),
+		trace.WithAttributes(
+			attribute.String("http.method", r.Method),
+			attribute.String("http.url", r.URL.String()),
+			attribute.String("http.remote_addr", r.RemoteAddr),
+		),
+	)
+	defer span.End()
+
 	defer r.Body.Close()
 
 	// URL should look like /funcs.foobar
@@ -47,11 +69,14 @@ func (p *httpNatsProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ss := strings.Split(r.URL.Path, "/")
 	// Validate URL structure
 	if len(ss) < 2 {
+		span.SetStatus(codes.Error, "Invalid URL structure")
+		span.SetAttributes(attribute.Int("http.status_code", http.StatusBadRequest))
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte("URL should be in the pattern of /<subject>"))
 		return
 	}
 	subject := ss[1]
+	span.SetAttributes(attribute.String("nats.subject", subject))
 
 	fields := log.Fields{
 		"subject": subject,
@@ -59,8 +84,12 @@ func (p *httpNatsProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	log.WithFields(fields).Info("Received HTTP request")
 
+	// Read request body with tracing
 	payload, err := io.ReadAll(r.Body)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "Failed to read request body")
+		span.SetAttributes(attribute.Int("http.status_code", http.StatusInternalServerError))
 		w.WriteHeader(http.StatusInternalServerError)
 		_, err = fmt.Fprintf(w, "failed to read request body: %s", err)
 		if err != nil {
@@ -68,6 +97,7 @@ func (p *httpNatsProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	span.SetAttributes(attribute.Int("http.request.body_size", len(payload)))
 
 	// We can override the HTTP timeout by passing the `_timeout` query string
 	timeout := DEFAULT_HTTP_TIMEOUT
@@ -77,8 +107,9 @@ func (p *httpNatsProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			timeout = DEFAULT_HTTP_TIMEOUT
 		}
 	}
+	span.SetAttributes(attribute.String("http.timeout", timeout.String()))
 
-	ctx, cancel := context.WithTimeout(r.Context(), timeout)
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	url := strings.ReplaceAll(r.URL.String(), "/"+subject, "")
@@ -90,29 +121,61 @@ func (p *httpNatsProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		URL:     url,
 	})
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "Failed to encode message")
 		log.WithFields(fields).Errorf("failed to encode message: %v", err)
 		return
 	}
 
-	msg, err := p.nc.RequestWithContext(ctx, subject, body)
+	// Start a child span for the NATS request
+	ctx, natsSpan := tracer.Start(ctx, "nats.request",
+		trace.WithSpanKind(trace.SpanKindClient),
+		trace.WithAttributes(
+			attribute.String("nats.subject", subject),
+			attribute.Int("nats.message_size", len(body)),
+		),
+	)
+
+	// Inject trace context into NATS message headers
+	msg := nats.NewMsg(subject)
+	msg.Data = body
+	otel.GetTextMapPropagator().Inject(ctx, natsHeaderCarrier(msg.Header))
+
+	response, err := p.nc.RequestMsgWithContext(ctx, msg)
 	if err != nil {
+		natsSpan.RecordError(err)
+		natsSpan.SetStatus(codes.Error, "NATS request failed")
+		natsSpan.End()
+		span.SetStatus(codes.Error, "Service unavailable")
+		span.SetAttributes(attribute.Int("http.status_code", http.StatusServiceUnavailable))
 		w.WriteHeader(http.StatusServiceUnavailable)
 		w.Write([]byte(err.Error()))
 		return
 	}
+	natsSpan.SetAttributes(attribute.Int("nats.response_size", len(msg.Data)))
+	natsSpan.SetStatus(codes.Ok, "")
+	natsSpan.End()
 
 	rep := new(executor.Reply)
-	err = json.Unmarshal(msg.Data, rep)
+	err = json.Unmarshal(response.Data, rep)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "Failed to unmarshal response")
+		span.SetAttributes(attribute.Int("http.status_code", http.StatusFailedDependency))
 		w.WriteHeader(http.StatusFailedDependency)
 		fmt.Fprintf(w, "Error: %v", err)
 		return
 	}
 
 	if rep.Error != "" {
+		span.SetAttributes(attribute.String("executor.error", rep.Error))
 		if rep.Error == (&executor.NoScriptFoundError{}).Error() {
+			span.SetStatus(codes.Error, "Script not found")
+			span.SetAttributes(attribute.Int("http.status_code", http.StatusNotFound))
 			w.WriteHeader(http.StatusNotFound)
 		} else {
+			span.SetStatus(codes.Error, rep.Error)
+			span.SetAttributes(attribute.Int("http.status_code", http.StatusInternalServerError))
 			w.WriteHeader(http.StatusInternalServerError)
 		}
 
@@ -126,6 +189,7 @@ func (p *httpNatsProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Go through all the scripts to see if one is HTML
 	if t, sr := hasHTMLResult(rep.AllResults); t {
+		span.SetAttributes(attribute.Bool("response.is_html", true))
 		var hasContentType bool
 		for k, v := range sr.Headers {
 			if k == "Content-Type" {
@@ -136,27 +200,43 @@ func (p *httpNatsProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if !hasContentType {
 			w.Header().Add("Content-Type", "text/html")
 		}
+		span.SetAttributes(
+			attribute.Int("http.status_code", sr.Code),
+			attribute.Int("http.response.body_size", len(sr.Payload)),
+		)
 		w.WriteHeader(sr.Code)
 
 		_, err = w.Write(sr.Payload)
 		if err != nil {
+			span.RecordError(err)
 			log.WithFields(fields).Errorf("failed to write reply back to HTTP response: %v", err)
 		}
 
+		span.SetStatus(codes.Ok, "")
 		// Since only the HTML page reply can "win" we ignore the rest
 		return
 	}
 
 	// Convert the results to bytes
+	span.SetAttributes(attribute.Bool("response.is_html", false))
 	rr, err := json.Marshal(rep.AllResults)
 	if err != nil {
+		span.RecordError(err)
 		log.WithFields(fields).Errorf("failed to serialize all results to JSON: %v", err)
 	}
 
+	span.SetAttributes(
+		attribute.Int("http.status_code", http.StatusOK),
+		attribute.Int("http.response.body_size", len(rr)),
+	)
+
 	_, err = w.Write(rr)
 	if err != nil {
+		span.RecordError(err)
 		log.WithFields(fields).Errorf("failed to write reply back to HTTP response: %v", err)
 	}
+
+	span.SetStatus(codes.Ok, "")
 }
 
 func hasHTMLResult(results map[string]*executor.ScriptResult) (bool, *executor.ScriptResult) {
