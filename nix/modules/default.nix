@@ -81,7 +81,7 @@ in
 
     otelEndpoint = mkOption {
       type = types.str;
-      default = "http://localhost:4317";
+      default = "localhost:4317";
       description = "OpenTelemetry collector endpoint URL.";
     };
   };
