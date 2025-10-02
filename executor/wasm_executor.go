@@ -11,12 +11,13 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/bytecodealliance/wasmtime-go/v35"
+	"github.com/bytecodealliance/wasmtime-go/v37"
 	"github.com/nats-io/nats.go"
-	msgplugins "github.com/numkem/msgscript/plugins"
-	scriptLib "github.com/numkem/msgscript/script"
-	msgstore "github.com/numkem/msgscript/store"
 	log "github.com/sirupsen/logrus"
+
+	msgplugins "github.com/numkem/msgscript/plugins"
+	"github.com/numkem/msgscript/script"
+	msgstore "github.com/numkem/msgscript/store"
 )
 
 type WasmExecutor struct {
@@ -52,32 +53,24 @@ func (we *WasmExecutor) HandleMessage(ctx context.Context, msg *Message, rf Repl
 	errs := make(chan error, len(scripts))
 	var wg sync.WaitGroup
 	r := NewReply()
-	for path, content := range scripts {
+	for path, scr := range scripts {
 		wg.Add(1)
 
-		ss := strings.Split(path, "/")
-		name := ss[len(ss)-1]
 		fields := log.Fields{
-			"subject":  msg.Subject,
-			"path":     name,
+			"subject":  scr.Subject,
+			"path":     path,
 			"executor": "wasm",
 		}
 
-		go func(content []byte) {
+		go func(scr *script.Script) {
 			defer wg.Done()
 
-			script, err := scriptLib.ReadString(string(content))
-			if err != nil {
-				errs <- fmt.Errorf("failed to read script: %w", err)
-				return
-			}
-
-			modulePath := strings.TrimSuffix(string(script.Content), "\n")
+			modulePath := strings.TrimSuffix(string(scr.Content), "\n")
 
 			// Script's content is the path to the wasm script
 			wasmBytes, err := os.ReadFile(modulePath)
 			if err != nil {
-				errs <- fmt.Errorf("failed to read wasm module file %s: %w", script.Content, err)
+				errs <- fmt.Errorf("failed to read wasm module file %s: %w", scr.Content, err)
 				return
 			}
 
