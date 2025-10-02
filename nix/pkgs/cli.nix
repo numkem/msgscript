@@ -29,6 +29,11 @@ buildGoModule {
       gpgme
     ]);
 
+  ldflags = [
+    "-X"
+    "main.version=${version}"
+  ];
+
   postInstall = ''
     mv $out/bin/cli $out/bin/msgscriptcli
   '';

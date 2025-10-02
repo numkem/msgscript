@@ -20,6 +20,7 @@ import (
 	msgstore "github.com/numkem/msgscript/store"
 )
 
+var version = "dev"
 func main() {
 	// Parse command-line flags
 	backendName := flag.String("backend", msgstore.BACKEND_FILE_NAME, "Storage backend to use (etcd, sqlite, flatfile)")

@@ -29,6 +29,11 @@ buildGoModule {
       gpgme
     ]);
 
+  ldflags = [
+    "-X"
+    "main.version=${version}"
+  ];
+
   doCheck = false; # Requires networking, will just timeout
 
   postInstall = ''
