@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strings"
 	"sync"
 
 	"github.com/containers/podman/v5/pkg/bindings"
@@ -19,6 +18,7 @@ import (
 	spec "github.com/opencontainers/runtime-spec/specs-go"
 	log "github.com/sirupsen/logrus"
 
+	"github.com/numkem/msgscript/script"
 	scriptLib "github.com/numkem/msgscript/script"
 	msgstore "github.com/numkem/msgscript/store"
 )
@@ -72,17 +72,15 @@ func (pe *PodmanExecutor) HandleMessage(ctx context.Context, msg *Message, reply
 	var wg sync.WaitGroup
 	r := NewReply()
 	// Loop through each container configuration and execute the specified container
-	for path, ctnCfg := range ctnCfgs {
+	for _, ctnCfg := range ctnCfgs {
 		wg.Add(1)
 
-		ss := strings.Split(path, "/")
-		name := ss[len(ss)-1]
-		fields["path"] = name
+		fields["name"] = ctnCfg.Name
 
-		go func(content []byte) {
+		go func(ctnCfg *script.Script) {
 			defer wg.Done()
 
-			scr, err := scriptLib.ReadString(string(content))
+			scr, err := scriptLib.ReadString(string(ctnCfg.Content))
 			if err != nil {
 				errs <- fmt.Errorf("failed to read script: %w", err)
 				return
