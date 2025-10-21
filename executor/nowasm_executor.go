@@ -1,4 +1,4 @@
-//go:build !wasm
+//go:build !wasmtime
 // This is so that we can build without wasm's dependancies
 
 package executor

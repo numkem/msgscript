@@ -1,5 +1,4 @@
-//go:build wasm
-
+//go:build wasmtime
 package executor
 
 import (
@@ -144,9 +143,9 @@ func (we *WasmExecutor) HandleMessage(ctx context.Context, msg *Message, rf Repl
 				scrRes.Error = string(b)
 			}
 
-			r.Results.Store(script.Name, scrRes)
+			r.Results.Store(scr.Name, scrRes)
 			log.WithFields(fields).Debug("stored result")
-		}(content)
+		}(scr)
 	}
 	wg.Wait()
 	log.WithField("subject", msg.Subject).Debugf("finished running %d scripts", len(scripts))
