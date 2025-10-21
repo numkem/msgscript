@@ -34,6 +34,8 @@ buildGoModule {
     "main.version=${version}"
   ];
 
+  tags = [ ] ++ (lib.optional withWasm [ "wasmtime" ]) ++ (lib.optional withPodman [ "podman" ]);
+
   postInstall = ''
     mv $out/bin/cli $out/bin/msgscriptcli
   '';

@@ -19,7 +19,7 @@ buildGoModule {
 
   subPackages = [ "cmd/server" ];
 
-  nativeBuildInputs = [ pkg-config ];
+  nativeBuildInputs = [ ] ++ (lib.optional withPodman [ pkg-config ]);
 
   buildInputs =
     [ ]
@@ -33,6 +33,8 @@ buildGoModule {
     "-X"
     "main.version=${version}"
   ];
+
+  tags = [ ] ++ (lib.optional withWasm [ "wasmtime" ]) ++ (lib.optional withPodman [ "podman" ]);
 
   doCheck = false; # Requires networking, will just timeout
 
