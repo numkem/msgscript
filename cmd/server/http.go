@@ -50,7 +50,7 @@ func NewHttpNatsProxy(port int, natsURL string) (*httpNatsProxy, error) {
 func (p *httpNatsProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Extract context from incoming request headers
 	ctx := otel.GetTextMapPropagator().Extract(r.Context(), propagation.HeaderCarrier(r.Header))
-	
+
 	// Start a new span for the HTTP request
 	ctx, span := tracer.Start(ctx, "http.request",
 		trace.WithSpanKind(trace.SpanKindServer),
@@ -112,8 +112,9 @@ func (p *httpNatsProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
+	// Change the url passed to the fuction to remove the subject
 	url := strings.ReplaceAll(r.URL.String(), "/"+subject, "")
-	log.Debug(url)
+	log.Debugf("URL: %s", url)
 	body, err := json.Marshal(&executor.Message{
 		Payload: payload,
 		Method:  r.Method,
@@ -141,13 +142,16 @@ func (p *httpNatsProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	msg.Data = body
 	otel.GetTextMapPropagator().Inject(ctx, natsHeaderCarrier(msg.Header))
 
+	// Send the message and wait for the response
 	response, err := p.nc.RequestMsgWithContext(ctx, msg)
 	if err != nil {
 		natsSpan.RecordError(err)
 		natsSpan.SetStatus(codes.Error, "NATS request failed")
 		natsSpan.End()
+
 		span.SetStatus(codes.Error, "Service unavailable")
 		span.SetAttributes(attribute.Int("http.status_code", http.StatusServiceUnavailable))
+
 		w.WriteHeader(http.StatusServiceUnavailable)
 		w.Write([]byte(err.Error()))
 		return
@@ -156,7 +160,7 @@ func (p *httpNatsProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	natsSpan.SetStatus(codes.Ok, "")
 	natsSpan.End()
 
-	rep := new(executor.Reply)
+	rep := new(Reply)
 	err = json.Unmarshal(response.Data, rep)
 	if err != nil {
 		span.RecordError(err)
@@ -188,38 +192,41 @@ func (p *httpNatsProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Go through all the scripts to see if one is HTML
-	if t, sr := hasHTMLResult(rep.AllResults); t {
-		span.SetAttributes(attribute.Bool("response.is_html", true))
-		var hasContentType bool
-		for k, v := range sr.Headers {
-			if k == "Content-Type" {
-				hasContentType = true
+	for _, scrRes := range rep.Results {
+		if scrRes.IsHTML {
+
+			span.SetAttributes(attribute.Bool("response.is_html", true))
+			var hasContentType bool
+			for k, v := range scrRes.Headers {
+				if k == "Content-Type" {
+					hasContentType = true
+				}
+				w.Header().Add(k, v)
 			}
-			w.Header().Add(k, v)
-		}
-		if !hasContentType {
-			w.Header().Add("Content-Type", "text/html")
-		}
-		span.SetAttributes(
-			attribute.Int("http.status_code", sr.Code),
-			attribute.Int("http.response.body_size", len(sr.Payload)),
-		)
-		w.WriteHeader(sr.Code)
+			if !hasContentType {
+				w.Header().Add("Content-Type", "text/html")
+			}
+			span.SetAttributes(
+				attribute.Int("http.status_code", scrRes.Code),
+				attribute.Int("http.response.body_size", len(scrRes.Payload)),
+			)
+			w.WriteHeader(scrRes.Code)
 
-		_, err = w.Write(sr.Payload)
-		if err != nil {
-			span.RecordError(err)
-			log.WithFields(fields).Errorf("failed to write reply back to HTTP response: %v", err)
-		}
+			_, err = w.Write(scrRes.Payload)
+			if err != nil {
+				span.RecordError(err)
+				log.WithFields(fields).Errorf("failed to write reply back to HTTP response: %v", err)
+			}
 
-		span.SetStatus(codes.Ok, "")
-		// Since only the HTML page reply can "win" we ignore the rest
-		return
+			span.SetStatus(codes.Ok, "")
+			// Since only the HTML page reply can "win" we ignore the rest
+			return
+		}
 	}
 
 	// Convert the results to bytes
 	span.SetAttributes(attribute.Bool("response.is_html", false))
-	rr, err := json.Marshal(rep.AllResults)
+	rr, err := json.Marshal(rep.Results)
 	if err != nil {
 		span.RecordError(err)
 		log.WithFields(fields).Errorf("failed to serialize all results to JSON: %v", err)

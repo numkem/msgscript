@@ -1,13 +1,17 @@
 //go:build !wasmtime
+
 // This is so that we can build without wasm's dependancies
 
 package executor
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/nats-io/nats.go"
+
 	msgplugins "github.com/numkem/msgscript/plugins"
+	"github.com/numkem/msgscript/script"
 	msgstore "github.com/numkem/msgscript/store"
 )
 
@@ -17,10 +21,8 @@ func NewWasmExecutor(c context.Context, store msgstore.ScriptStore, plugins []ms
 	return &noWasmExecutor{}
 }
 
-func (e *noWasmExecutor) HandleMessage(ctx context.Context, msg *Message, rf ReplyFunc) {
-	r := NewReply()
-	r.Error = "msgscript wasn't built with wasm support"
-	rf(r)
+func (e *noWasmExecutor) HandleMessage(ctx context.Context, msg *Message, scr *script.Script) *ScriptResult {
+	return ScriptResultWithError(fmt.Errorf("msgscript wasn't built with wasm support"))
 }
 
 func (e *noWasmExecutor) Stop() {}

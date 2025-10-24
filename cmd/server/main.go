@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"fmt"
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"time"
 
 	natsserver "github.com/nats-io/nats-server/v2/server"
@@ -22,6 +24,7 @@ import (
 	"github.com/numkem/msgscript"
 	"github.com/numkem/msgscript/executor"
 	msgplugin "github.com/numkem/msgscript/plugins"
+	"github.com/numkem/msgscript/script"
 	msgstore "github.com/numkem/msgscript/store"
 )
 
@@ -171,7 +174,6 @@ func main() {
 		span.SetAttributes(
 			attribute.Bool("message.raw", m.Raw),
 			attribute.Bool("message.async", m.Async),
-			attribute.String("message.executor", m.Executor),
 		)
 
 		// The above unmarshalling only applies to the structure of the JSON.
@@ -184,33 +186,90 @@ func main() {
 			}
 		}
 
-		replier := &replier{nc: nc}
-		var messageReply executor.ReplyFunc
 		if m.Async {
 			span.SetAttributes(attribute.String("reply.mode", "async"))
-			messageReply = replier.AsyncReply(m, msg)
 			err = nc.Publish(msg.Reply, []byte("{}"))
 			if err != nil {
 				span.RecordError(err)
 				span.SetStatus(codes.Error, "Failed to publish async reply")
 				log.WithFields(fields).Errorf("failed to reply to message: %v", err)
+
+				replyWithError(nc, fmt.Errorf("failed to reply to message: %v", err), msg.Reply)
 				return
 			}
 		} else {
 			span.SetAttributes(attribute.String("reply.mode", "sync"))
-			messageReply = replier.SyncReply(m, msg)
 		}
 
-		exec, err := executor.ExecutorByName(m.Executor, executors)
+		cctx, getScriptsSpan := mainTracer.Start(ctx, "nats.handle_message.get_scripts", trace.WithAttributes(
+			attribute.String("script.Name", m.Subject),
+			attribute.String("script.URL", m.URL),
+		))
+
+		scripts, err := scriptStore.GetScripts(cctx, m.Subject)
 		if err != nil {
+			log.WithError(err).WithField("subject", m.Subject).Error("failed to get scripts for subject")
 			span.RecordError(err)
-			span.SetStatus(codes.Error, "Failed to get executor")
-			log.WithError(err).Error("failed to get executor for message")
+			span.SetStatus(codes.Error, "Failed to get scripts")
+
+			replyWithError(nc, fmt.Errorf("failed to get scripts for subject"), msg.Reply)
+			return
+		}
+		getScriptsSpan.SetStatus(codes.Ok, fmt.Sprintf("found %d scripts", len(scripts)))
+		getScriptsSpan.End()
+
+		_, executeScriptsSpan := mainTracer.Start(ctx, "nats.handle_message.run_scripts")
+		defer executeScriptsSpan.End()
+
+		var wg sync.WaitGroup
+		allResults := make(chan *executor.ScriptResult, len(scripts))
+		for _, scr := range scripts {
+			wg.Add(1)
+			go func(ctx context.Context, msg *executor.Message, script *script.Script) {
+				defer wg.Done()
+
+				// Pass the context with trace info to the executor
+				exec, err := executor.ExecutorByName(scr.Executor, executors)
+				if err != nil {
+					executeScriptsSpan.RecordError(err)
+					executeScriptsSpan.SetStatus(codes.Error, "Failed to get executor")
+					log.WithError(err).Error("failed to get executor for script")
+
+					allResults <- &executor.ScriptResult{Error: fmt.Sprintf("failed to get executor for script: %v", err)}
+					return
+				}
+
+				rep := exec.HandleMessage(ctx, m, scr)
+				allResults <- rep
+			}(ctx, m, scr)
+		}
+		wg.Wait()
+
+		close(allResults)
+
+		_, parseReplySpan := mainTracer.Start(ctx, "nats.handle_message.parse_replies")
+		msgRep := new(Reply)
+		for res := range allResults {
+			if res.IsHTML {
+				msgRep.HTML = true
+			}
+
+			msgRep.Results = append(msgRep.Results, res)
+		}
+		parseReplySpan.SetStatus(codes.Ok, "responses parsed")
+		parseReplySpan.End()
+
+		_, natsReplaySpan := mainTracer.Start(ctx, "nats.handle_message.send_reply")
+		err = replyMessage(nc, m, msg.Reply, msgRep)
+		if err != nil {
+			natsReplaySpan.RecordError(err)
+			natsReplaySpan.SetStatus(codes.Error, "Failed to send reply through NATS")
+
+			log.WithError(err).Errorf("failed to send reply through NATS")
 			return
 		}
 
-		// Pass the context with trace info to the executor
-		exec.HandleMessage(ctx, m, messageReply)
+		log.WithField("subject", msg.Subject).Debugf("finished running %d scripts", len(scripts))
 		span.SetStatus(codes.Ok, "Message handled")
 	})
 	if err != nil {

@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"os"
 	"strings"
-	"sync"
 
 	"github.com/cjoudrey/gluahttp"
 	luajson "github.com/layeh/gopher-json"
@@ -14,16 +13,15 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/yuin/gluare"
 	lua "github.com/yuin/gopher-lua"
-	lfs "layeh.com/gopher-lfs"
-
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
+	lfs "layeh.com/gopher-lfs"
 
 	luamodules "github.com/numkem/msgscript/lua"
 	msgplugins "github.com/numkem/msgscript/plugins"
-	scriptLib "github.com/numkem/msgscript/script"
+	"github.com/numkem/msgscript/script"
 	msgstore "github.com/numkem/msgscript/store"
 )
 
@@ -51,14 +49,9 @@ func NewLuaExecutor(c context.Context, store msgstore.ScriptStore, plugins []msg
 	}
 }
 
-func replyWithError(fields log.Fields, rf ReplyFunc, msg string, a ...any) {
-	e := fmt.Errorf(msg, a...)
-	log.WithFields(fields).Error(e)
-	rf(&Reply{Error: e.Error()})
-}
-
 // HandleMessage receives a message, matches it to a Lua script, and executes the script in a new goroutine
-func (le *LuaExecutor) HandleMessage(ctx context.Context, msg *Message, rf ReplyFunc) {
+// Run the Lua script in a separate goroutine to handle the message for each script
+func (le *LuaExecutor) HandleMessage(ctx context.Context, msg *Message, scr *script.Script) *ScriptResult {
 	ctx, span := luaTracer.Start(ctx, "lua.handle_message",
 		trace.WithAttributes(
 			attribute.String("subject", msg.Subject),
@@ -73,232 +66,179 @@ func (le *LuaExecutor) HandleMessage(ctx context.Context, msg *Message, rf Reply
 		"executor": "lua",
 	}
 
-	// Look up the Lua script for the given subject
-	_, lookupSpan := luaTracer.Start(ctx, "lua.lookup_scripts",
+	ss := strings.Split(scr.Name, "/")
+	name := ss[len(ss)-1]
+	fields["path"] = name
+
+	// Create a child span for this script execution
+	_, scriptSpan := luaTracer.Start(ctx, "lua.build_script",
 		trace.WithAttributes(
-			attribute.String("subject", msg.Subject),
+			attribute.String("script.name", scr.Subject),
+			attribute.String("script.path", scr.Name),
+			attribute.Bool("script.is_html", scr.HTML),
+			attribute.Int("script.lib_count", len(scr.LibKeys)),
 		),
 	)
-	scripts, err := le.store.GetScripts(ctx, msg.Subject)
+	defer scriptSpan.End()
+
+	res := new(ScriptResult)
+
+	tmp, err := os.MkdirTemp(os.TempDir(), "msgscript-lua-*s")
 	if err != nil {
-		lookupSpan.RecordError(err)
-		lookupSpan.SetStatus(codes.Error, "Failed to get scripts")
-		lookupSpan.End()
-		span.RecordError(err)
-		span.SetStatus(codes.Error, "Failed to get scripts")
-		replyWithError(fields, rf, "failed to get scripts for subject %s: %v", msg.Subject, err)
-		return
+		scriptSpan.RecordError(err)
+		scriptSpan.SetStatus(codes.Error, "Failed to create temp directory")
+
+		res.Error = fmt.Sprintf("failed to create temp directory: %w", err)
+		return nil
+	}
+	defer os.RemoveAll(tmp)
+
+	err = os.Chdir(tmp)
+	if err != nil {
+		scriptSpan.RecordError(err)
+		scriptSpan.SetStatus(codes.Error, "Failed to change directory")
+
+		res.Error = fmt.Sprintf("failed to change to temp directory %s: %w", tmp, err)
+		return nil
+	}
+	scriptSpan.SetAttributes(attribute.String("temp_dir", tmp))
+
+	// Load libraries
+	_, libSpan := luaTracer.Start(ctx, "lua.load_libraries",
+		trace.WithAttributes(
+			attribute.Int("library_count", len(scr.LibKeys)),
+		),
+	)
+	defer libSpan.End()
+	libs, err := le.store.LoadLibrairies(ctx, scr.LibKeys)
+	if err != nil {
+		libSpan.RecordError(err)
+		libSpan.SetStatus(codes.Error, "Failed to load libraries")
+
+		scriptSpan.RecordError(err)
+		scriptSpan.SetStatus(codes.Error, "Failed to load libraries")
+
+		res.Error = fmt.Errorf("failed to read librairies: %w", err).Error()
+		return res
+	}
+	libSpan.SetStatus(codes.Ok, "")
+
+	// Acquire lock
+	_, lockSpan := luaTracer.Start(ctx, "lua.acquire_lock",
+		trace.WithAttributes(
+			attribute.String("lock.name", scr.Name),
+		),
+	)
+	defer lockSpan.End()
+
+	locked, err := le.store.TakeLock(ctx, scr.Name)
+	if err != nil {
+		lockSpan.RecordError(err)
+		lockSpan.SetStatus(codes.Error, "Failed to acquire lock")
+
+		scriptSpan.RecordError(err)
+		scriptSpan.SetStatus(codes.Error, "Failed to load libraries")
+
+		log.WithFields(fields).Debugf("failed to get lock: %s", err)
+		res.Error = fmt.Sprintf("failed to get lock: %s", err)
+		return res
 	}
 
-	if scripts == nil {
-		lookupSpan.SetStatus(codes.Error, "No scripts found")
-		lookupSpan.End()
-		span.SetStatus(codes.Error, "No scripts found")
-		replyWithError(fields, rf, "no scripts found for subject %s", msg.Subject)
-		return
+	if !locked {
+		lockSpan.SetStatus(codes.Error, "Lock not acquired")
+
+		scriptSpan.SetStatus(codes.Error, "Could not acquire lock")
+
+		log.WithFields(fields).Debug("we don't have a lock, giving up")
+		res.Error = "cannot get lock"
+		return res
 	}
-	lookupSpan.SetAttributes(attribute.Int("script_count", len(scripts)))
-	lookupSpan.SetStatus(codes.Ok, "")
-	lookupSpan.End()
+	lockSpan.SetStatus(codes.Ok, "Lock acquired")
 
-	span.SetAttributes(attribute.Int("script_count", len(scripts)))
+	defer le.store.ReleaseLock(ctx, scr.Name)
 
-	errs := make(chan error, len(scripts))
-	var wg sync.WaitGroup
-	r := NewReply()
+	log.WithFields(fields).WithField("isHTML", scr.HTML).Debug("executing script")
 
-	// Loop through each scripts attached to the subject as there might be more than one
-	for path, scr := range scripts {
-		wg.Add(1)
+	// Initialize Lua state
+	_, luaInitSpan := luaTracer.Start(ctx, "lua.initialize_state")
+	L := lua.NewState()
+	tctx, tcan := context.WithTimeout(le.ctx, MAX_LUA_RUNNING_TIME)
+	defer tcan()
+	L.SetContext(tctx)
+	defer L.Close()
 
-		ss := strings.Split(path, "/")
-		name := ss[len(ss)-1]
-		fields["path"] = name
+	// Set up the Lua state with the subject and payload
+	L.PreloadModule("http", gluahttp.NewHttpModule(&http.Client{}).Loader)
+	L.PreloadModule("re", gluare.Loader)
+	lfs.Preload(L)
+	luajson.Preload(L)
+	luamodules.PreloadEtcd(L)
+	luamodules.PreloadNats(L, le.nc)
 
-		// Run the Lua script in a separate goroutine to handle the message for each script
-		go func(scr *scriptLib.Script) {
-			defer wg.Done()
+	// Load plugins
+	if le.plugins != nil {
+		err = msgplugins.LoadPlugins(L, le.plugins)
+		if err != nil {
+			luaInitSpan.RecordError(err)
+			luaInitSpan.SetStatus(codes.Error, "Failed to load plugins")
 
-			// Create a child span for this script execution
-			_, scriptSpan := luaTracer.Start(ctx, "lua.build_script",
-				trace.WithAttributes(
-					attribute.String("script.name", scr.Name),
-					attribute.String("script.path", path),
-					attribute.Bool("script.is_html", scr.HTML),
-					attribute.Int("script.lib_count", len(scr.LibKeys)),
-				),
-			)
-			defer scriptSpan.End()
+			scriptSpan.RecordError(err)
+			scriptSpan.SetStatus(codes.Error, "Failed to load plugins")
 
-			tmp, err := os.MkdirTemp(os.TempDir(), "msgscript-lua-*s")
-			if err != nil {
-				scriptSpan.RecordError(err)
-				scriptSpan.SetStatus(codes.Error, "Failed to create temp directory")
-				errs <- fmt.Errorf("failed to create temp directory: %w", err)
-				return
-			}
-			defer os.RemoveAll(tmp)
-
-			err = os.Chdir(tmp)
-			if err != nil {
-				scriptSpan.RecordError(err)
-				scriptSpan.SetStatus(codes.Error, "Failed to change directory")
-				errs <- fmt.Errorf("failed to change to temp directory %s: %w", tmp, err)
-				return
-			}
-			scriptSpan.SetAttributes(attribute.String("temp_dir", tmp))
-
-			// Load libraries
-			_, libSpan := luaTracer.Start(ctx, "lua.load_libraries",
-				trace.WithAttributes(
-					attribute.Int("library_count", len(scr.LibKeys)),
-				),
-			)
-			libs, err := le.store.LoadLibrairies(ctx, scr.LibKeys)
-			if err != nil {
-				libSpan.RecordError(err)
-				libSpan.SetStatus(codes.Error, "Failed to load libraries")
-				libSpan.End()
-				scriptSpan.RecordError(err)
-				scriptSpan.SetStatus(codes.Error, "Failed to load libraries")
-				errs <- fmt.Errorf("failed to read librairies: %w", err)
-				return
-			}
-			libSpan.SetStatus(codes.Ok, "")
-			libSpan.End()
-
-			// Acquire lock
-			_, lockSpan := luaTracer.Start(ctx, "lua.acquire_lock",
-				trace.WithAttributes(
-					attribute.String("lock.name", scr.Name),
-				),
-			)
-			locked, err := le.store.TakeLock(ctx, scr.Name)
-			if err != nil {
-				lockSpan.RecordError(err)
-				lockSpan.SetStatus(codes.Error, "Failed to acquire lock")
-				lockSpan.End()
-				log.WithFields(fields).Debugf("failed to get lock: %s", err)
-				return
-			}
-
-			if !locked {
-				lockSpan.SetStatus(codes.Error, "Lock not acquired")
-				lockSpan.End()
-				scriptSpan.SetStatus(codes.Error, "Could not acquire lock")
-				log.WithFields(fields).Debug("we don't have a lock, giving up")
-				return
-			}
-			lockSpan.SetStatus(codes.Ok, "Lock acquired")
-			lockSpan.End()
-			defer le.store.ReleaseLock(ctx, scr.Name)
-
-			log.WithFields(fields).WithField("isHTML", scr.HTML).Debug("executing script")
-
-			// Initialize Lua state
-			_, luaInitSpan := luaTracer.Start(ctx, "lua.initialize_state")
-			L := lua.NewState()
-			tctx, tcan := context.WithTimeout(le.ctx, MAX_LUA_RUNNING_TIME)
-			defer tcan()
-			L.SetContext(tctx)
-			defer L.Close()
-
-			// Set up the Lua state with the subject and payload
-			L.PreloadModule("http", gluahttp.NewHttpModule(&http.Client{}).Loader)
-			L.PreloadModule("re", gluare.Loader)
-			lfs.Preload(L)
-			luajson.Preload(L)
-			luamodules.PreloadEtcd(L)
-			luamodules.PreloadNats(L, le.nc)
-
-			// Load plugins
-			if le.plugins != nil {
-				err = msgplugins.LoadPlugins(L, le.plugins)
-				if err != nil {
-					luaInitSpan.RecordError(err)
-					luaInitSpan.SetStatus(codes.Error, "Failed to load plugins")
-					luaInitSpan.End()
-					scriptSpan.RecordError(err)
-					scriptSpan.SetStatus(codes.Error, "Failed to load plugins")
-					errs <- fmt.Errorf("failed to load plugin: %w", err)
-					return
-				}
-			}
-			luaInitSpan.SetStatus(codes.Ok, "")
-			luaInitSpan.End()
-
-			// Build script content
-			var sb strings.Builder
-			for _, l := range libs {
-				sb.Write(l)
-				sb.WriteString("\n")
-			}
-			sb.Write(scr.Content)
-			scriptContent := sb.String()
-			scriptSpan.SetAttributes(attribute.Int("script.content_size", len(scriptContent)))
-			log.WithFields(fields).Debugf("script:\n%+s\n\n", scriptContent)
-
-			res := &ScriptResult{
-				IsHTML:  scr.HTML,
-				Headers: make(map[string]string),
-			}
-
-			// Execute Lua script
-			_, execSpan := luaTracer.Start(ctx, "lua.execute_script")
-			if err := L.DoString(scriptContent); err != nil {
-				execSpan.RecordError(err)
-				execSpan.SetStatus(codes.Error, "Failed to execute script")
-				execSpan.End()
-				scriptSpan.RecordError(err)
-				scriptSpan.SetStatus(codes.Error, "Script execute error")
-				msg := fmt.Sprintf("error executing Lua script: %s", err)
-				log.WithFields(fields).Errorf(msg)
-				res.Error = err.Error()
-				r.Results.Store(scr.Name, res)
-				return
-			}
-			execSpan.SetStatus(codes.Ok, "")
-			execSpan.End()
-
-			// Execute the appropriate message handler
-			if scr.HTML {
-				// If the message is set to return HTML, we pass 2 things to the fonction named after the HTTP
-				// method received ex: POST(), GET()...
-				// The 2 things are:
-				//   - The URL part after the function name
-				//   - The body of the HTTP call
-				le.executeHTMLMessage(ctx, fields, L, msg, r, res, scr.Name)
-			} else {
-				// If we do not have an HTML based message, we call the function named
-				// OnMessage() with 2 parameters:
-				//   - The subject
-				//   - The body of the message
-				le.executeRawMessage(ctx, fields, L, r, msg, res, scr.Name)
-			}
-
-			scriptSpan.SetStatus(codes.Ok, "Script executed successfully")
-		}(scr)
+			res.Error = fmt.Sprintf("failed to load plugin: %w", err)
+			return res
+		}
 	}
+	luaInitSpan.SetStatus(codes.Ok, "")
+	luaInitSpan.End()
 
-	wg.Wait()
-	log.WithField("subject", msg.Subject).Debugf("finished running %d scripts", len(scripts))
-
-	close(errs)
-	for e := range errs {
-		span.RecordError(e)
-		r.Error = r.Error + " " + e.Error()
+	// Build script content
+	var sb strings.Builder
+	for _, l := range libs {
+		sb.Write(l)
+		sb.WriteString("\n")
 	}
+	sb.Write(scr.Content)
+	scriptContent := sb.String()
+	scriptSpan.SetAttributes(attribute.Int("script.content_size", len(scriptContent)))
+	log.WithFields(fields).Debugf("script:\n%+s\n\n", scriptContent)
 
-	if r.Error != "" {
-		span.SetStatus(codes.Error, "Script execution had errors")
+	// Execute Lua script
+	_, execSpan := luaTracer.Start(ctx, "lua.execute_script")
+	if err := L.DoString(scriptContent); err != nil {
+		scriptSpan.RecordError(err)
+		scriptSpan.SetStatus(codes.Error, "Script execute error")
+
+		msg := fmt.Sprintf("error executing Lua script: %s", err)
+		log.WithFields(fields).Errorf(msg)
+		res.Error = err.Error()
+		return nil
+	}
+	execSpan.SetStatus(codes.Ok, "")
+	execSpan.End()
+
+	// Execute the appropriate message handler
+	if scr.HTML {
+		// If the message is set to return HTML, we pass 2 things to the fonction named after the HTTP
+		// method received ex: POST(), GET()...
+		// The 2 things are:
+		//   - The URL part after the function name
+		//   - The body of the HTTP call
+		res = le.executeHTMLMessage(ctx, fields, L, msg, scr.Name)
 	} else {
-		span.SetStatus(codes.Ok, "All scripts executed successfully")
+		// If we do not have an HTML based message, we call the function named
+		// OnMessage() with 2 parameters:
+		//   - The subject
+		//   - The body of the message
+		res = le.executeRawMessage(ctx, fields, L, msg, scr.Name)
 	}
 
-	rf(r)
+	scriptSpan.SetStatus(codes.Ok, "Script executed successfully")
+
+	return res
 }
 
-func (*LuaExecutor) executeHTMLMessage(ctx context.Context, fields log.Fields, L *lua.LState, msg *Message, reply *Reply, res *ScriptResult, name string) {
+func (*LuaExecutor) executeHTMLMessage(ctx context.Context, fields log.Fields, L *lua.LState, msg *Message, name string) *ScriptResult {
 	_, span := luaTracer.Start(ctx, "lua.execute_html_message",
 		trace.WithAttributes(
 			attribute.String("script.name", name),
@@ -306,6 +246,8 @@ func (*LuaExecutor) executeHTMLMessage(ctx context.Context, fields log.Fields, L
 		),
 	)
 	defer span.End()
+
+	res := new(ScriptResult)
 
 	log.WithFields(fields).Debug("Running HTML based script")
 	gMethod := L.GetGlobal(msg.Method)
@@ -317,8 +259,9 @@ func (*LuaExecutor) executeHTMLMessage(ctx context.Context, fields log.Fields, L
 		}, lua.LString(msg.URL), lua.LString(string(msg.Payload))); err != nil {
 			span.RecordError(err)
 			span.SetStatus(codes.Error, fmt.Sprintf("Failed to call %s function", msg.Method))
-			reply.Error = fmt.Errorf("failed to call %s function: %w", msg.Method, err).Error()
-			return
+
+			res.Error = fmt.Errorf("failed to call %s function: %w", msg.Method, err).Error()
+			return res
 		}
 	}
 
@@ -351,10 +294,10 @@ func (*LuaExecutor) executeHTMLMessage(ctx context.Context, fields log.Fields, L
 	)
 	span.SetStatus(codes.Ok, "HTML message executed")
 
-	reply.Results.Store(name, res)
+	return res
 }
 
-func (*LuaExecutor) executeRawMessage(ctx context.Context, fields log.Fields, L *lua.LState, reply *Reply, msg *Message, res *ScriptResult, name string) {
+func (*LuaExecutor) executeRawMessage(ctx context.Context, fields log.Fields, L *lua.LState, msg *Message, name string) *ScriptResult {
 	_, span := luaTracer.Start(ctx, "lua.execute_raw_message",
 		trace.WithAttributes(
 			attribute.String("script.name", name),
@@ -363,13 +306,14 @@ func (*LuaExecutor) executeRawMessage(ctx context.Context, fields log.Fields, L 
 	)
 	defer span.End()
 
+	res := new(ScriptResult)
 	log.WithFields(fields).Debug("Running standard script")
 
 	gOnMessage := L.GetGlobal("OnMessage")
 	if gOnMessage.Type().String() == "nil" {
 		span.SetStatus(codes.Error, "OnMessage function not found")
-		reply.Error = "failed to find global function named 'OnMessage'"
-		return
+		res.Error = "failed to find global function named 'OnMessage'"
+		return res
 	}
 
 	// Call the "OnMessage" function
@@ -381,21 +325,25 @@ func (*LuaExecutor) executeRawMessage(ctx context.Context, fields log.Fields, L 
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "Failed to call OnMessage")
-		reply.Error = fmt.Errorf("failed to call OnMessage function: %w", err).Error()
-		return
+		res.Error = fmt.Errorf("failed to call OnMessage function: %w", err).Error()
+		return res
 	}
 
 	result := L.Get(-1)
-	if val, ok := result.(lua.LString); ok {
+	val, ok := result.(lua.LString)
+	if ok {
 		res.Payload = []byte(val.String())
 		span.SetAttributes(attribute.Int("response.size", len(res.Payload)))
-		reply.Results.Store(name, res)
-		log.WithFields(fields).Debugf("Script output: \n%s\n", string(res.Payload))
 		span.SetStatus(codes.Ok, "Raw message executed")
+
+		log.WithFields(fields).Debugf("Script output: \n%s\n", string(res.Payload))
 	} else {
 		span.SetStatus(codes.Error, "Script did not return a string")
+
 		log.WithFields(fields).Debug("Script did not return a string")
 	}
+
+	return res
 }
 
 // Stop gracefully shuts down the ScriptExecutor and stops watching for messages
