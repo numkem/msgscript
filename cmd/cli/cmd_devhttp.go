@@ -212,7 +212,22 @@ func (p *devHttpProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			log.WithFields(fields).Errorf("failed to write reply back to HTTP response: %v", err)
 		}
+
+		return
 	}
+
+	// Return the content of the script as if the browser was a console
+	w.Header().Add("Content-Type", "text/plain")
+
+	// Only print error if there is one
+	if res.Error != "" {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(res.Error))
+		return
+	}
+
+	w.WriteHeader(code)
+	w.Write(res.Payload)
 }
 
 func emptyStore(s store.ScriptStore, libraryDir string) {
