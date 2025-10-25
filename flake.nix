@@ -8,7 +8,7 @@
   outputs =
     { self, nixpkgs }:
     let
-      version = "0.7.1";
+      version = "0.8.1";
       vendorHash = "sha256-IsLAIKYuKhlD71fad8FuayTFbdQJla4ifjs8TexXDYQ=";
 
       mkPlugin =
