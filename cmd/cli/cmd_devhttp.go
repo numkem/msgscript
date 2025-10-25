@@ -226,7 +226,7 @@ func (p *devHttpProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.WriteHeader(code)
+	w.WriteHeader(http.StatusOK)
 	w.Write(res.Payload)
 }
 
