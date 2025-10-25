@@ -55,6 +55,8 @@ func NewPodmanExecutor(ctx context.Context, store msgstore.ScriptStore) (*Podman
 		return nil, fmt.Errorf("failed to connect to the podman socket: %w", err)
 	}
 
+	log.Info("WASM executor initialized")
+
 	return &PodmanExecutor{
 		ConnText: connText,
 		store:    store,
