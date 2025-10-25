@@ -342,6 +342,8 @@ func (*LuaExecutor) executeRawMessage(ctx context.Context, fields log.Fields, L 
 
 		log.WithFields(fields).Debug("Script did not return a string")
 	}
+	span.SetAttributes(attribute.Int("response.size", len(res.Payload)))
+	span.SetStatus(codes.Ok, "Raw message executed")
 
 	return res
 }
