@@ -53,7 +53,6 @@ func devHttpCmdRun(cmd *cobra.Command, args []string) {
 		}
 	}
 
-
 	executors := executor.StartAllExecutors(cmd.Context(), store, plugins, nil)
 	exec, err := executor.ExecutorByName(cmd.Flag("executor").Value.String(), executors)
 	if err != nil {
@@ -180,53 +179,40 @@ func (p *devHttpProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		URL:     url,
 	}
 
-	p.executor.HandleMessage(p.context, msg, func(rep *executor.Reply) {
-		fields := log.Fields{
-			"subject": msg.Subject,
-			"url":     msg.URL,
-			"method":  msg.Method,
-		}
-		log.WithFields(fields).Debugf("Results: %s", string(msg.Payload))
-
-		if rep.Error != "" {
-			if rep.Error == (&executor.NoScriptFoundError{}).Error() {
-				w.WriteHeader(http.StatusNotFound)
-			} else {
-				w.WriteHeader(http.StatusInternalServerError)
-			}
-
-			_, err = w.Write([]byte("Error: " + rep.Error))
-			if err != nil {
-				log.WithFields(fields).Errorf("failed to write error to HTTP response: %v", err)
-			}
-
-			return
+	res := p.executor.HandleMessage(p.context, msg, scr)
+	if res.Error != "" {
+		if res.Error == (&executor.NoScriptFoundError{}).Error() {
+			w.WriteHeader(http.StatusNotFound)
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
 		}
 
-		rep.Results.Range(func(key, value any) bool {
-			sr := value.(*executor.ScriptResult)
-			if sr.IsHTML {
-				var hasContentType bool
-				for k, v := range sr.Headers {
-					if k == "Content-Type" {
-						hasContentType = true
-					}
-					w.Header().Add(k, v)
-				}
-				if !hasContentType {
-					w.Header().Add("Content-Type", "text/html")
-				}
-				w.WriteHeader(sr.Code)
+		_, err = w.Write([]byte("Error: " + res.Error))
+		if err != nil {
+			log.WithFields(fields).Errorf("failed to write error to HTTP response: %v", err)
+		}
 
-				_, err = w.Write(sr.Payload)
-				if err != nil {
-					log.WithFields(fields).Errorf("failed to write reply back to HTTP response: %v", err)
-				}
+		return
+	}
+
+	if res.IsHTML {
+		var hasContentType bool
+		for k, v := range res.Headers {
+			if k == "Content-Type" {
+				hasContentType = true
 			}
+			w.Header().Add(k, v)
+		}
+		if !hasContentType {
+			w.Header().Add("Content-Type", "text/html")
+		}
+		w.WriteHeader(res.Code)
 
-			return true
-		})
-	})
+		_, err = w.Write(res.Payload)
+		if err != nil {
+			log.WithFields(fields).Errorf("failed to write reply back to HTTP response: %v", err)
+		}
+	}
 }
 
 func emptyStore(s store.ScriptStore, libraryDir string) {

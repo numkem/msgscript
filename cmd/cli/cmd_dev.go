@@ -105,7 +105,6 @@ func devCmdRun(cmd *cobra.Command, args []string) {
 		"lua_filename": args[0],
 	}
 
-	stopChan := make(chan struct{}, 1)
 	log.WithFields(fields).Debug("running the function")
 
 	m := &executor.Message{
@@ -114,30 +113,19 @@ func devCmdRun(cmd *cobra.Command, args []string) {
 		Executor: cmd.Flag("executor").Value.String(),
 	}
 
-	replyFunc := func(r *executor.Reply) {
-		fields := log.Fields{"subject": subject}
-		log.WithFields(fields).Debug("script replied")
-
-		j, err := r.JSON()
-		if err != nil {
-			log.WithFields(fields).Errorf("failed to Unmarshal reply: %v", err)
-		}
-
-		cmd.Printf("Result: %s\n", string(j))
-		stopChan <- struct{}{}
-	}
-
 	executors := executor.StartAllExecutors(cmd.Context(), store, plugins, nil)
 	exec, err := executor.ExecutorByName(m.Executor, executors)
 	if err != nil {
 		cmd.PrintErrf("failed to get executor for message: %v", err)
-		stopChan <- struct{}{}
 		return
 	}
 
-	exec.HandleMessage(cmd.Context(), m, replyFunc)
-
-	<-stopChan
-
+	res := exec.HandleMessage(cmd.Context(), m, scr)
+	if res.Error != "" {
+		cmd.PrintErrf("Error while running script: %v", err)
+		return
+	}
 	executor.StopAllExecutors(executors)
+
+	cmd.Printf("Result: %s\n", string(res.Payload))
 }
