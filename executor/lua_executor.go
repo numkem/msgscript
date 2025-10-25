@@ -247,7 +247,7 @@ func (*LuaExecutor) executeHTMLMessage(ctx context.Context, fields log.Fields, L
 	)
 	defer span.End()
 
-	res := new(ScriptResult)
+	res := &ScriptResult{IsHTML: true}
 
 	log.WithFields(fields).Debug("Running HTML based script")
 	gMethod := L.GetGlobal(msg.Method)
