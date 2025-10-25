@@ -225,6 +225,7 @@ func main() {
 		allResults := make(chan *executor.ScriptResult, len(scripts))
 		for _, scr := range scripts {
 			wg.Add(1)
+
 			go func(ctx context.Context, msg *executor.Message, script *script.Script) {
 				defer wg.Done()
 
@@ -239,8 +240,7 @@ func main() {
 					return
 				}
 
-				rep := exec.HandleMessage(ctx, m, scr)
-				allResults <- rep
+				allResults <- exec.HandleMessage(ctx, m, scr)
 			}(ctx, m, scr)
 		}
 		wg.Wait()
@@ -256,6 +256,7 @@ func main() {
 
 			msgRep.Results = append(msgRep.Results, res)
 		}
+		parseReplySpan.SetAttributes(attribute.Int("responses", len(msgRep.Results)))
 		parseReplySpan.SetStatus(codes.Ok, "responses parsed")
 		parseReplySpan.End()
 
