@@ -10,7 +10,9 @@ require (
 	github.com/containers/podman/v5 v5.5.2
 	github.com/felipejfc/gluahttpscrape v0.0.0-20170525191632-10580c4a38f9
 	github.com/fsnotify/fsnotify v1.9.0
+	github.com/gomarkdown/markdown v0.0.0-20260217112301-37c66b85d6ab
 	github.com/google/uuid v1.6.0
+	github.com/gorilla/mux v1.8.1
 	github.com/jedib0t/go-pretty/v6 v6.5.9
 	github.com/layeh/gopher-json v0.0.0-20201124131017-552bb3c4c3bf
 	github.com/nats-io/nats-server/v2 v2.10.24
@@ -98,7 +100,6 @@ require (
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/go-containerregistry v0.20.3 // indirect
 	github.com/google/go-intervals v0.0.2 // indirect
-	github.com/gorilla/mux v1.8.1 // indirect
 	github.com/gorilla/schema v1.4.1 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.25.1 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect

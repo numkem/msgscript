@@ -14,6 +14,7 @@
     - [In HTTP+HTML mode](#in-httphtml-mode)
   - [Return value](#return-value)
 - [HTTP handler](#http-handler)
+  - [Special HTTP Endpoints](#special-http-endpoints)
 - [Installation](#installation)
   - [Docker container](#docker-container)
   - [NixOS service](#nixos-service)
@@ -144,6 +145,15 @@ Example using curl (if you are running locally and for the subject of the exampl
 ```
 curl -X POST -d 'John' http://127.0.0.1:7643/http.hello
 ```
+
+### Special HTTP Endpoints
+
+Some endpoints exists to see the content of the store. These endpoints are meant to be used with a browser.
+
+- `/_/` shows the README.md file converted to HTML
+- `/_/list` shows a list of the current subjects
+- `/_/subject/{subject}` list the scripts associated to a subject by name
+- `/_/info/{subject}/{name}` shows information about a script including the source
 
 ## Installation
 
