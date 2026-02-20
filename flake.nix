@@ -8,8 +8,8 @@
   outputs =
     { self, nixpkgs }:
     let
-      version = "0.8.2";
-      vendorHash = "sha256-IsLAIKYuKhlD71fad8FuayTFbdQJla4ifjs8TexXDYQ=";
+      version = "0.9.0";
+      vendorHash = "sha256-Jer/ADurA+BwvAuuTjEycJNExBnobEs72ccQMmOqV1k=";
 
       mkPlugin =
         pkgs: name: path:
@@ -40,15 +40,28 @@
         let
           pkgs = import nixpkgs { system = "x86_64-linux"; };
           lib = pkgs.lib;
+          system = "x86_64-linux";
         in
         rec {
+          default = server;
+
           cli = pkgs.callPackage ./nix/pkgs/cli.nix {
             inherit version vendorHash;
           };
+
           server = pkgs.callPackage ./nix/pkgs/server.nix {
             inherit version vendorHash;
           };
-          default = server;
+
+          runServer = pkgs.writeScript "msgscript" ''
+            #!/usr/bin/env bash
+            ${self.packages.${system}.server}/bin/msgscript -plugin ${allPlugins}/ $@
+          '';
+
+          runCli = pkgs.writeScript "msgscriptcli" ''
+            #!/usr/bin/env bash
+            ${self.packages.${system}.cli}/bin/msgscriptcli -plugin ${allPlugins}/ $@
+          '';
 
           allPlugins = pkgs.symlinkJoin {
             name = "msgscript-all-plugins";
@@ -93,6 +106,25 @@
               );
             in
             lib.genAttrs pluginDirs (name: mkPlugin pkgs name "${self}/plugins/${name}");
+        };
+
+      apps =
+        let
+          mkApps = system: {
+            server = {
+              type = "app";
+              program = "${self.packages.${system}.runServer}";
+            };
+
+            cli = {
+              type = "app";
+              program = "${self.packages.${system}.runCli}";
+            };
+          };
+        in
+        {
+          "x86_64-linux" = mkApps "x86_64-linux";
+          "aarch64-linux" = mkApps "aarch64-linux"; 
         };
 
       devShells.x86_64-linux.default =

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gorilla/mux"
 	"github.com/nats-io/nats.go"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/net/context"
@@ -27,12 +28,12 @@ const DEFAULT_HTTP_TIMEOUT = 5 * time.Second
 
 var tracer = otel.Tracer("http-nats-proxy")
 
-type httpNatsProxy struct {
+type functionHandler struct {
 	port string
 	nc   *nats.Conn
 }
 
-func NewHttpNatsProxy(port int, natsURL string) (*httpNatsProxy, error) {
+func newFunctionHandler(port int, natsURL string) (*functionHandler, error) {
 	// Connect to NATS
 	if natsURL == "" {
 		natsURL = msgscript.NatsUrlByEnv()
@@ -42,12 +43,12 @@ func NewHttpNatsProxy(port int, natsURL string) (*httpNatsProxy, error) {
 		return nil, fmt.Errorf("Failed to connect to NATS: %w", err)
 	}
 
-	return &httpNatsProxy{
+	return &functionHandler{
 		nc: nc,
 	}, nil
 }
 
-func (p *httpNatsProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (fh *functionHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Extract context from incoming request headers
 	ctx := otel.GetTextMapPropagator().Extract(r.Context(), propagation.HeaderCarrier(r.Header))
 
@@ -143,7 +144,7 @@ func (p *httpNatsProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	otel.GetTextMapPropagator().Inject(ctx, natsHeaderCarrier(msg.Header))
 
 	// Send the message and wait for the response
-	response, err := p.nc.RequestMsgWithContext(ctx, msg)
+	response, err := fh.nc.RequestMsgWithContext(ctx, msg)
 	if err != nil {
 		natsSpan.RecordError(err)
 		natsSpan.SetStatus(codes.Error, "NATS request failed")
@@ -246,22 +247,33 @@ func (p *httpNatsProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	span.SetStatus(codes.Ok, "")
 }
 
-func hasHTMLResult(results map[string]*executor.ScriptResult) (bool, *executor.ScriptResult) {
-	for _, sr := range results {
-		if sr.IsHTML {
-			return true, sr
-		}
-	}
-
-	return false, nil
-}
-
 func runHTTP(port int, natsURL string) {
-	proxy, err := NewHttpNatsProxy(port, natsURL)
+	r := mux.NewRouter()
+
+	hfunc, err := newFunctionHandler(port, natsURL)
 	if err != nil {
 		log.Fatalf("failed to create HTTP proxy: %v", err)
 	}
 
+	r.HandleFunc("/", index)
+	r.HandleFunc("/logo.webp", logo)
+	r.HandleFunc("/favicon.ico", ignore) // Keeps poluting logs
+
+	r.HandleFunc("/_/list", hfunc.ListScripts)
+	r.HandleFunc("/_/subject/{subject}", hfunc.ListNamesForScript)
+	r.HandleFunc("/_/info/{subject}/{name}", hfunc.InfoForNamedScript)
+
+	r.PathPrefix("/").Handler(hfunc)
+
+	srv := &http.Server{
+		Handler:      r,
+		Addr:         fmt.Sprintf("0.0.0.0:%d", port),
+		WriteTimeout: 1 * time.Minute,
+		ReadTimeout:  1 * time.Minute,
+	}
+
 	log.Infof("Starting HTTP server on port %d", port)
-	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", port), proxy))
+	log.Fatal(srv.ListenAndServe())
 }
+
+func ignore(w http.ResponseWriter, r *http.Request) {}

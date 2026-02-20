@@ -156,6 +156,24 @@ func main() {
 			return
 		}
 
+		// Check for some special subjects we use internally
+		switch msg.Subject {
+		case subjectListScripts:
+			replyWithSubjectList(ctx, nc, scriptStore, msg.Reply)
+			return
+		case subjectListNamesForScript:
+			replyWithNamesForSubject(ctx, nc, scriptStore, string(msg.Data), msg.Reply)
+			return
+		case subjectInfoNamedSCript:
+			ss := strings.Split(string(msg.Data), ",")
+			if len(ss) != 2 {
+				replyWithError(nc, fmt.Errorf("invalid request"), msg.Reply)
+			}
+			replyWithNamedScriptInfo(ctx, nc, scriptStore, ss[0], ss[1], msg.Reply)
+			return
+		default:
+		}
+
 		m := new(executor.Message)
 		err := json.Unmarshal(msg.Data, m)
 		// if the payload isn't a JSON Message, take it as a whole
@@ -212,7 +230,7 @@ func main() {
 			span.RecordError(err)
 			span.SetStatus(codes.Error, "Failed to get scripts")
 
-			replyWithError(nc, fmt.Errorf("failed to get scripts for subject"), msg.Reply)
+			replyWithError(nc, fmt.Errorf("failed to get scripts for subject: %v", err), msg.Reply)
 			return
 		}
 		getScriptsSpan.SetStatus(codes.Ok, fmt.Sprintf("found %d scripts", len(scripts)))
