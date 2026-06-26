@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	natsserver "github.com/nats-io/nats-server/v2/server"
@@ -43,7 +44,7 @@ func main() {
 	scriptDir := flag.String("script", ".", "Script directory")
 	flag.Parse()
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	notifyContext, stop := signal.NotifyContext(context.Background(), syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
 	defer stop()
 
 	// Set up logging
@@ -61,7 +62,7 @@ func main() {
 		log.WithField("kind", "traces").Info("Starting telemetry")
 
 		// Init traces
-		otelShutdown, err := setupOTelSDK(ctx)
+		otelShutdown, err := setupOTelSDK(notifyContext)
 		if err != nil {
 			log.Errorf("failed to initialize opentelemetry traces: %v", err)
 			os.Exit(1)
@@ -122,7 +123,7 @@ func main() {
 		}
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(notifyContext)
 	defer cancel()
 
 	executors := executor.StartAllExecutors(ctx, scriptStore, plugins, nc)
@@ -301,5 +302,8 @@ func main() {
 	}()
 
 	// Start HTTP Server
-	runHTTP(*httpPort, *natsURL)
+	go runHTTP(*httpPort, *natsURL)
+
+	<-notifyContext.Done()
+	stop()
 }
