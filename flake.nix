@@ -151,7 +151,7 @@
             gpgme
 
             # Server compose
-            arion
+            podman-compose
 
             # LSPs
             gopls
