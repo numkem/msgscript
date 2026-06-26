@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	subjectListScripts        = "__listScrips"
+	subjectListScripts        = "__listScripts"
 	subjectListNamesForScript = "__listNamesForScript"
 	subjectInfoNamedSCript    = "__infoNamedScript"
 )
@@ -56,7 +56,12 @@ func replyWithNamesForSubject(ctx context.Context, nc *nats.Conn, scriptStore st
 
 	var names []string
 	for name := range scripts {
-		names = append(names, name)
+		if scriptStore.BackendName() == store.ETCD_BACKEND_NAME {
+			fullSubjectPath := strings.Join([]string{store.ETCD_SCRIPT_KEY_PREFIX, subject}, "/")
+			names = append(names, strings.ReplaceAll(name, fullSubjectPath, ""))
+		} else {
+			names = append(names, name)
+		}
 	}
 
 	j, err := json.Marshal(names)
@@ -85,6 +90,11 @@ func replyWithNamedScriptInfo(ctx context.Context, nc *nats.Conn, scriptStore st
 	if err != nil {
 		replyWithError(nc, err, replySubject)
 		return
+	}
+
+	// etcd backend will have the full path as the key name so we need to reconstuct it
+	if scriptStore.BackendName() == store.ETCD_BACKEND_NAME {
+		name = strings.Join([]string{store.ETCD_SCRIPT_KEY_PREFIX, subject, name}, "/")
 	}
 
 	script := allScripts[name]
@@ -116,5 +126,4 @@ func replyWithNamedScriptInfo(ctx context.Context, nc *nats.Conn, scriptStore st
 		HTML:  script.HTML,
 		Error: "",
 	})
-
 }

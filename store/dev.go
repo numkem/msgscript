@@ -21,6 +21,8 @@ type DevStore struct {
 	libraries map[string][]byte
 }
 
+const DEV_BACKEND_NAME = "dev"
+
 func NewDevStore(libraryPath string) (ScriptStore, error) {
 	store := &DevStore{
 		scripts:   make(map[string]map[string]*script.Script),
@@ -137,4 +139,8 @@ func (s *DevStore) RemoveLibrary(ctx context.Context, path string) error {
 	delete(s.libraries, path)
 
 	return nil
+}
+
+func (s *DevStore) BackendName() string {
+	return DEV_BACKEND_NAME
 }

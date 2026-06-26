@@ -30,6 +30,12 @@ func (fh *functionHandler) ListScripts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if len(rep.Results) < 1 {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`<html><head><title>Msgscript :: List all subjects</title></head><body>No subjects found</body</html>`))
+		return
+	}
+
 	var subjects []string
 	err = json.Unmarshal(rep.Results[0].Payload, &subjects)
 	if err != nil {
@@ -77,6 +83,11 @@ func (fh *functionHandler) ListNamesForScript(w http.ResponseWriter, r *http.Req
 	err = json.Unmarshal(response.Data, rep)
 	if err != nil {
 		returnError(w, err)
+		return
+	}
+
+	if len(rep.Results) < 1 {
+		returnError(w, fmt.Errorf("no named script found for subject %s", subject))
 		return
 	}
 
@@ -130,6 +141,10 @@ func (fh *functionHandler) InfoForNamedScript(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	if len(rep.Results) < 1 {
+		returnError(w, fmt.Errorf("no information found on script for subject %s with name %s", subject, name))
+		return
+	}
 	script := rep.Results[0]
 
 	isHTMLValue := "No"

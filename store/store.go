@@ -28,6 +28,7 @@ type ScriptStore interface {
 	LoadLibrairies(ctx context.Context, libraryPaths []string) ([][]byte, error)
 	AddLibrary(ctx context.Context, content []byte, path string) error
 	RemoveLibrary(ctx context.Context, path string) error
+	BackendName() string
 }
 
 func StoreByName(name, etcdEndpoints, scriptDir, libraryDir string) (ScriptStore, error) {

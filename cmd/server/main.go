@@ -302,7 +302,7 @@ func main() {
 	}()
 
 	// Start HTTP Server
-	go runHTTP(*httpPort, *natsURL)
+	go runHTTP(*httpPort, *backendName, *natsURL)
 
 	<-notifyContext.Done()
 	stop()

@@ -29,11 +29,11 @@ const DEFAULT_HTTP_TIMEOUT = 5 * time.Second
 var tracer = otel.Tracer("http-nats-proxy")
 
 type functionHandler struct {
-	port string
 	nc   *nats.Conn
+	backend string
 }
 
-func newFunctionHandler(port int, natsURL string) (*functionHandler, error) {
+func newFunctionHandler(backend, natsURL string) (*functionHandler, error) {
 	// Connect to NATS
 	if natsURL == "" {
 		natsURL = msgscript.NatsUrlByEnv()
@@ -45,6 +45,7 @@ func newFunctionHandler(port int, natsURL string) (*functionHandler, error) {
 
 	return &functionHandler{
 		nc: nc,
+		backend: backend,
 	}, nil
 }
 
@@ -247,18 +248,19 @@ func (fh *functionHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	span.SetStatus(codes.Ok, "")
 }
 
-func runHTTP(port int, natsURL string) {
+func runHTTP(port int, backend string, natsURL string) {
 	r := mux.NewRouter()
 
-	hfunc, err := newFunctionHandler(port, natsURL)
+	hfunc, err := newFunctionHandler(backend, natsURL)
 	if err != nil {
 		log.Fatalf("failed to create HTTP proxy: %v", err)
 	}
 
 	r.HandleFunc("/", index)
 	r.HandleFunc("/logo.webp", logo)
-	r.HandleFunc("/favicon.ico", ignore) // Keeps poluting logs
+	r.HandleFunc("/favicon.ico", ignore) // Keeps from poluting logs
 
+	r.HandleFunc("/_/", index)
 	r.HandleFunc("/_/list", hfunc.ListScripts)
 	r.HandleFunc("/_/subject/{subject}", hfunc.ListNamesForScript)
 	r.HandleFunc("/_/info/{subject}/{name}", hfunc.InfoForNamedScript)

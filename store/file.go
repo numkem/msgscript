@@ -20,6 +20,8 @@ type FileScriptStore struct {
 
 type fileStoreMapValue map[string]*script.Script
 
+const FILE_BACKEND_NAME = "file"
+
 func NewFileScriptStore(scriptPath string, libraryPath string) (ScriptStore, error) {
 	return &FileScriptStore{
 		scripts: new(sync.Map),
@@ -155,4 +157,8 @@ func (f *FileScriptStore) AddLibrary(ctx context.Context, content []byte, path s
 func (f *FileScriptStore) RemoveLibrary(ctx context.Context, path string) error {
 	f.libs.Delete(path)
 	return nil
+}
+
+func (f *FileScriptStore) BackendName() string {
+	return FILE_BACKEND_NAME
 }

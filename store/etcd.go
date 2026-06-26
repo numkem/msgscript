@@ -20,6 +20,7 @@ const (
 	ETCD_SESSION_TTL        = 3 // In seconds
 	ETCD_SCRIPT_KEY_PREFIX  = "msgscript/scripts"
 	ETCD_LIBRARY_KEY_PREFIX = "msgscript/libs"
+	ETCD_BACKEND_NAME       = "etcd"
 )
 
 // EtcdScriptStore stores Lua scripts in etcd, supporting multiple scripts per subject
@@ -307,4 +308,8 @@ func (e *EtcdScriptStore) RemoveLibrary(ctx context.Context, path string) error 
 	}
 
 	return nil
+}
+
+func (e *EtcdScriptStore) BackendName() string {
+	return ETCD_BACKEND_NAME
 }
