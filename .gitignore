@@ -27,3 +27,4 @@ go.work.sum
 /default.etcd/
 result
 *.wasm
+/all_plugins
