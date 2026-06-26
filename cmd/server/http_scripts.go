@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"html"
 	"net/http"
 	"sort"
 	"strings"
@@ -30,12 +29,6 @@ func (fh *functionHandler) ListScripts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if len(rep.Results) < 1 {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`<html><head><title>Msgscript :: List all subjects</title></head><body>No subjects found</body</html>`))
-		return
-	}
-
 	var subjects []string
 	err = json.Unmarshal(rep.Results[0].Payload, &subjects)
 	if err != nil {
@@ -43,26 +36,10 @@ func (fh *functionHandler) ListScripts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sort.Strings(subjects)
-
 	w.WriteHeader(http.StatusOK)
-	resp := []byte(`
-<html>
-  <header>
-    <title>Msgscript :: List all subjects</title>
-  </header>
-  <body>
-    <h1>Subject List</h1><ul>`)
-
-	for _, subject := range subjects {
-		if subject == "" {
-			continue
-		}
-
-		resp = fmt.Appendf(resp, `<li><a href="/_/subject/%s">%s</a></li>`, subject, subject)
-	}
-
-	w.Write(fmt.Append(resp, `</ul></body></html>`))
+	fh.templates["list"].ExecuteTemplate(w, "list", map[string]any{
+		"subjects": subjects,
+	})
 }
 
 func (fh *functionHandler) ListNamesForScript(w http.ResponseWriter, r *http.Request) {
@@ -101,22 +78,14 @@ func (fh *functionHandler) ListNamesForScript(w http.ResponseWriter, r *http.Req
 	sort.Strings(names)
 
 	w.WriteHeader(http.StatusOK)
-	resp := fmt.Appendf(nil, `<html>
-  <header>
-    <title>Msgscript :: List all subjects</title>
-  </header>
-  <body>
-    <h1>Names for subject %s</h1><ul>`, subject)
-
-	for _, name := range names {
-		if name == "" {
-			continue
-		}
-
-		resp = fmt.Appendf(resp, `<li><a href="/_/info/%s/%s">%s</a></li>`, subject, name, name)
+	err = fh.templates["names"].ExecuteTemplate(w, "names", map[string]any{
+		"subject": subject,
+		"names":   names,
+	})
+	if err != nil {
+		returnError(w, err)
+		return
 	}
-
-	w.Write(fmt.Append(resp, `</ul></body></html>`))
 }
 
 func (fh *functionHandler) InfoForNamedScript(w http.ResponseWriter, r *http.Request) {
@@ -147,30 +116,17 @@ func (fh *functionHandler) InfoForNamedScript(w http.ResponseWriter, r *http.Req
 	}
 	script := rep.Results[0]
 
-	isHTMLValue := "No"
-	if script.IsHTML {
-		isHTMLValue = fmt.Sprintf(`<a href="/%s/">Yes</a>`, subject)
-	}
-
 	w.WriteHeader(http.StatusOK)
-	w.Write(fmt.Appendf(nil, `<html>
-  <header>
-    <title>Msgscript :: Info for script %s/%s</title>
-  </header>
-  <body>
-    <h1>Script information</h1>
-    <h2>Properties</h2>
-    Subject: %s<br />
-    Name: %s<br />
-    Is HTML?: %s<br />
-    Libraires used: %s<br />
-    Executor: %s<br />
-
-    <h2>Source</h2>
-    <pre>
-%s
-    </pre>
-  </body>
-</html>
-`, subject, name, subject, name, isHTMLValue, script.Headers["libraries"], script.Headers["executor"], html.EscapeString(string(script.Payload))))
+	err = fh.templates["info"].ExecuteTemplate(w, "info", map[string]any{
+		"subject":     subject,
+		"name":        name,
+		"isHTMLValue": script.IsHTML,
+		"libraries":   script.Headers["libraries"],
+		"executor":    script.Headers["executor"],
+		"content":     string(script.Payload),
+	})
+	if err != nil {
+		returnError(w, err)
+		return
+	}
 }

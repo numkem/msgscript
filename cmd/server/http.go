@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"io"
 	"net/http"
 	"strings"
@@ -21,16 +22,19 @@ import (
 
 	"github.com/numkem/msgscript"
 	"github.com/numkem/msgscript/executor"
+	serverTemplates "github.com/numkem/msgscript/templates"
 )
 
 const DEFAULT_HTTP_PORT = 7643
 const DEFAULT_HTTP_TIMEOUT = 5 * time.Second
+const HTML_TEMPLATES_PATH = "./templates"
 
 var tracer = otel.Tracer("http-nats-proxy")
 
 type functionHandler struct {
-	nc   *nats.Conn
-	backend string
+	nc        *nats.Conn
+	backend   string
+	templates map[string]*template.Template
 }
 
 func newFunctionHandler(backend, natsURL string) (*functionHandler, error) {
@@ -43,9 +47,16 @@ func newFunctionHandler(backend, natsURL string) (*functionHandler, error) {
 		return nil, fmt.Errorf("Failed to connect to NATS: %w", err)
 	}
 
+	htmlTemplates := map[string]*template.Template{
+		"list": template.Must(template.New("list").Parse(string(serverTemplates.LIST))),
+		"names": template.Must(template.New("names").Parse(string(serverTemplates.NAMES))),
+		"info":  template.Must(template.New("info").Parse(string(serverTemplates.INFO))),
+	}
+
 	return &functionHandler{
-		nc: nc,
-		backend: backend,
+		nc:        nc,
+		backend:   backend,
+		templates: htmlTemplates,
 	}, nil
 }
 

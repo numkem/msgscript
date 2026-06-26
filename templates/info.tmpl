@@ -1,0 +1,19 @@
+<html>
+  <header>
+    <title>Msgscript :: Info for script {{.subject}}/{{.name}}</title>
+  </header>
+  <body>
+    <h1>Script information</h1>
+    <h2>Properties</h2>
+    Subject: {{.subject}}<br />
+    Name: {{.name}}<br />
+    Is HTML?: {{if .isHTMLValue}} Yes {{else}} No {{end}}<br />
+    Libraires used: {{if ne .libraries ""}} {{.libraries}} {{else}} None {{end}}<br />
+    Executor: {{.executor}}<br />
+
+    <h2>Source</h2>
+    <pre>
+{{.content}}
+    </pre>
+  </body>
+</html>

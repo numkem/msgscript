@@ -1,0 +1,16 @@
+<html>
+  <header>
+    <title>Msgscript :: Name list for subject {{.subject}}</title>
+  </header>
+  <body>
+    <h1>Names for subject {{.subject}}</h1>
+    <url>
+      {{$subject := .subject}}
+      {{range .names}}
+      <li>
+        <a href="/_/info/{{$subject}}/{{.}}">{{.}}</a>
+      </li> 
+      {{end}}
+    </url>
+  </body>
+</html>

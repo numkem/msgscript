@@ -77,6 +77,35 @@
               );
             in
             lib.genAttrs pluginDirs (name: mkPlugin pkgs name "${self}/plugins/${name}");
+
+          test = pkgs.testers.runNixOSTest {
+            inherit system;
+            name = "msgscript";
+            nodes.machine = {...}: {
+              imports = [
+                self.modules.default
+              ];
+
+              nixpks.overlays = [ self.overlays.default ];
+
+              services = {
+                etcd.enable = true;
+
+                msgscrit.enable = true;
+              };
+            };
+
+            skipLint = true;
+
+            testScript = ''
+import json
+import sys
+
+start_all()
+
+server.wait_for_open_port(2379)
+            '';
+          };
         };
       packages.aarch64-linux =
         let

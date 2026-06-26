@@ -1,0 +1,17 @@
+<html>
+  <header>
+    <title>Msgscript :: List all subjects</title>
+  </header>
+  <body>
+    <h1>Subject List</h1>
+    {{if gt (len .subjects) 1}}
+    <ul>
+      {{range .subjects}}
+        <li><a href="/_/subject/{{.}}">{{.}}</a></li>
+      {{end}}
+    </ul>
+    {{else}}
+    <p>No subjects found</p>
+    {{end}}
+  </body>
+</html>
