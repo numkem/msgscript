@@ -104,7 +104,7 @@ in
           OTEL_ENDPOINT = cfg.otelEndpoint;
         });
 
-      path = cfg.path;
+      path = cfg.extraPathPackages;
 
       serviceConfig = {
         ExecStart = "${pkgs.msgscript-server}/bin/msgscript -backend ${cfg.backend} -etcdurl ${lib.concatStringsSep "," cfg.etcdEndpoints} -natsurl ${cfg.natsUrl} -plugin ${pluginDir} -script ${cfg.scriptDir} -library ${cfg.libraryDir}";
