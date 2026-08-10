@@ -61,6 +61,12 @@ in
       default = "${cfg.dataDir}/libs";
     };
 
+    extraPathPackages = mkOption {
+      type = types.listOf types.package;
+      description = "List of extra packages to add to the PATH of the service. Useful when using cmd.exec() in lua";
+      default = [ ];
+    };
+
     user = mkOption {
       type = types.str;
       default = "msgscript";
@@ -97,6 +103,8 @@ in
           TELEMETRY_TRACES = "1";
           OTEL_ENDPOINT = cfg.otelEndpoint;
         });
+
+      path = cfg.path;
 
       serviceConfig = {
         ExecStart = "${pkgs.msgscript-server}/bin/msgscript -backend ${cfg.backend} -etcdurl ${lib.concatStringsSep "," cfg.etcdEndpoints} -natsurl ${cfg.natsUrl} -plugin ${pluginDir} -script ${cfg.scriptDir} -library ${cfg.libraryDir}";
