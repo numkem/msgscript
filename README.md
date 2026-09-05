@@ -75,7 +75,7 @@ For more technical details, a [flow chart](how_it_works.png) explains what happe
 The headers are formed with the pattern of `--* <header>: <value>`. There are multiple possible headers:
 - `subject`: The subject the script is associated with
 - `name`: The name of the script. Multiple scripts can be associated with the same subject
-- `http`: Used to return HTML responses
+- `html`: Used to return HTML responses
 - `require`: Used to load a library script. It comes from the library "repository" of scripts and is prepended to the script that will be executed.
 
 Each script is a Lua file that gets executed when the server receives a message that matches a pattern. The pattern is defined in the `subject` field. The files also contains a `name` field. Multiple scripts can be associated with the same subject.
