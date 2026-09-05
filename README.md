@@ -75,7 +75,7 @@ For more technical details, a [flow chart](how_it_works.png) explains what happe
 The headers are formed with the pattern of `--* <header>: <value>`. There are multiple possible headers:
 - `subject`: The subject the script is associated with
 - `name`: The name of the script. Multiple scripts can be associated with the same subject
-- `html`: Used to return HTML responses
+- `html`: When set (to any value), the response will contain HTML.
 - `require`: Used to load a library script. It comes from the library "repository" of scripts and is prepended to the script that will be executed.
 
 Each script is a Lua file that gets executed when the server receives a message that matches a pattern. The pattern is defined in the `subject` field. The files also contains a `name` field. Multiple scripts can be associated with the same subject.
@@ -95,7 +95,7 @@ Example, for a GET request:
 ``` lua
 --* subject: http.hello
 --* name: http_get
---* http: true
+--* html: true
 
 function GET(url, body)
     return "Hello, " .. body .. "!", 200, { ["Content-Type"] = "text/plain" }
