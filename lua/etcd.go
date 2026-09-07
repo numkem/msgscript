@@ -1,7 +1,6 @@
 package lua
 
 import (
-	"context"
 	"os"
 
 	log "github.com/sirupsen/logrus"
@@ -81,9 +80,9 @@ func (l *luaEtcd) Get(L *lua.LState) int {
 	var resp *clientv3.GetResponse
 	var err error
 	if prefix {
-		resp, err = l.client.Get(context.TODO(), key, clientv3.WithPrefix())
+		resp, err = l.client.Get(L.Context(), key, clientv3.WithPrefix())
 	} else {
-		resp, err = l.client.Get(context.TODO(), key)
+		resp, err = l.client.Get(L.Context(), key)
 	}
 	if err != nil {
 		L.Push(lua.LNil)
@@ -116,7 +115,7 @@ func (l *luaEtcd) Get(L *lua.LState) int {
 func (l *luaEtcd) Put(L *lua.LState) int {
 	key := L.CheckString(1)
 	value := L.CheckString(2)
-	_, err := l.client.Put(context.TODO(), key, value)
+	_, err := l.client.Put(L.Context(), key, value)
 	if err != nil {
 		L.Push(lua.LString(err.Error()))
 		return 1
@@ -128,7 +127,7 @@ func (l *luaEtcd) Put(L *lua.LState) int {
 
 func (l *luaEtcd) Delete(L *lua.LState) int {
 	key := L.CheckString(1)
-	_, err := l.client.Delete(context.TODO(), key)
+	_, err := l.client.Delete(L.Context(), key)
 	if err != nil {
 		L.Push(lua.LString(err.Error()))
 		return 2
