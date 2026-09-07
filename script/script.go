@@ -102,6 +102,9 @@ func (s *Script) Read(f io.Reader) error {
 			}
 		}
 	}
+	if err := scanner.Err(); err != nil {
+		return err
+	}
 
 	s.Content = []byte(strings.TrimSuffix(b.String(), "\n"))
 
