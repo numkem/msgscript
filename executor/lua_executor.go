@@ -209,10 +209,10 @@ func (le *LuaExecutor) HandleMessage(ctx context.Context, msg *Message, scr *scr
 		scriptSpan.RecordError(err)
 		scriptSpan.SetStatus(codes.Error, "Script execute error")
 
-		msg := fmt.Sprintf("error executing Lua script: %s", err)
-		log.WithFields(fields).Errorf(msg)
+		log.WithFields(fields).Errorf("error executing Lua script: %s", err)
 		res.Error = err.Error()
-		return nil
+
+		return res
 	}
 	execSpan.SetStatus(codes.Ok, "")
 	execSpan.End()
