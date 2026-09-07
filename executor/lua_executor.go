@@ -88,7 +88,7 @@ func (le *LuaExecutor) HandleMessage(ctx context.Context, msg *Message, scr *scr
 		scriptSpan.RecordError(err)
 		scriptSpan.SetStatus(codes.Error, "Failed to create temp directory")
 
-		res.Error = fmt.Sprintf("failed to create temp directory: %w", err)
+		res.Error = fmt.Sprintf("failed to create temp directory: %v", err)
 		return nil
 	}
 	defer os.RemoveAll(tmp)
@@ -98,7 +98,7 @@ func (le *LuaExecutor) HandleMessage(ctx context.Context, msg *Message, scr *scr
 		scriptSpan.RecordError(err)
 		scriptSpan.SetStatus(codes.Error, "Failed to change directory")
 
-		res.Error = fmt.Sprintf("failed to change to temp directory %s: %w", tmp, err)
+		res.Error = fmt.Sprintf("failed to change to temp directory %s: %v", tmp, err)
 		return nil
 	}
 	scriptSpan.SetAttributes(attribute.String("temp_dir", tmp))
@@ -185,7 +185,7 @@ func (le *LuaExecutor) HandleMessage(ctx context.Context, msg *Message, scr *scr
 			scriptSpan.RecordError(err)
 			scriptSpan.SetStatus(codes.Error, "Failed to load plugins")
 
-			res.Error = fmt.Sprintf("failed to load plugin: %w", err)
+			res.Error = fmt.Sprintf("failed to load plugin: %v", err)
 			return res
 		}
 	}
