@@ -1,0 +1,1 @@
+{"nats_url":"localhost:4222","script_store":{"backend_name":"file","etcd_url":"localhost:2379","script_directory":"./examples/","library_directory":"./examples/libs"},"lua_executor":{"plugin_dir":""},"messsage":{"async":false,"method":"GET","payload":"","raw":false,"subject":"funcs.hello","url":""}}

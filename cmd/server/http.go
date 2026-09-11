@@ -173,7 +173,7 @@ func (fh *functionHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	natsSpan.SetStatus(codes.Ok, "")
 	natsSpan.End()
 
-	rep := new(Reply)
+	rep := new(executor.Reply)
 	err = json.Unmarshal(response.Data, rep)
 	if err != nil {
 		span.RecordError(err)

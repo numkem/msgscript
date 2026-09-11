@@ -71,7 +71,7 @@ func StoreByName(name, etcdEndpoints, scriptDir, libraryDir string) (ScriptStore
 				nbScripts++
 			}
 		}
-		log.Infof("loaded %d scripts from %s", nbScripts, scriptDir)
+		log.Debugf("loaded %d scripts from %s", nbScripts, scriptDir)
 
 		if libraryDir != "" {
 			// Read libraries from the library directory
@@ -85,7 +85,7 @@ func StoreByName(name, etcdEndpoints, scriptDir, libraryDir string) (ScriptStore
 				scriptStore.AddLibrary(context.Background(), library.Content, library.Name)
 				nbLibraries++
 			}
-			log.Infof("loaded %d libraries from %s", nbLibraries, libraryDir)
+			log.Debugf("loaded %d libraries from %s", nbLibraries, libraryDir)
 		}
 
 		return scriptStore, nil

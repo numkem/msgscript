@@ -28,3 +28,4 @@ go.work.sum
 result
 *.wasm
 /all_plugins
+/worker

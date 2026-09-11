@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/signal"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 
@@ -25,12 +24,11 @@ import (
 	"github.com/numkem/msgscript"
 	"github.com/numkem/msgscript/executor"
 	msgplugin "github.com/numkem/msgscript/plugins"
-	"github.com/numkem/msgscript/script"
 	msgstore "github.com/numkem/msgscript/store"
 )
 
 var version = "dev"
-var mainTracer = otel.Tracer("msgscript.main")
+var mainTracer = otel.Tracer("msgscript")
 
 func main() {
 	// Parse command-line flags
@@ -39,9 +37,11 @@ func main() {
 	natsURL := flag.String("natsurl", "", "URL of NATS server")
 	logLevel := flag.String("log", "info", "Logging level (debug, info, warn, error)")
 	httpPort := flag.Int("port", DEFAULT_HTTP_PORT, "HTTP port to bind to")
-	pluginDir := flag.String("plugin", "", "Plugin directory")
+	luaPluginDir := flag.String("plugin", "", "Plugin directory")
 	libraryDir := flag.String("library", "", "Library directory")
 	scriptDir := flag.String("script", ".", "Script directory")
+	workerExecutablePath := flag.String("wexec", "./worker", "Path to the worker executoable")
+	workerEnvironmentPath := flag.String("wenv", "", "Path to a file containing environment variables for the worker")
 	flag.Parse()
 
 	notifyContext, stop := signal.NotifyContext(context.Background(), syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
@@ -57,6 +57,8 @@ func main() {
 	if os.Getenv("DEBUG") != "" {
 		log.SetLevel(log.DebugLevel)
 	}
+
+	log.Infof("using worker at %s", *workerExecutablePath)
 
 	if os.Getenv("TELEMETRY_TRACES") != "" {
 		log.WithField("kind", "traces").Info("Starting telemetry")
@@ -116,8 +118,8 @@ func main() {
 
 	// Initialize ScriptExecutor
 	var plugins []msgplugin.PreloadFunc
-	if *pluginDir != "" {
-		plugins, err = msgplugin.ReadPluginDir(*pluginDir)
+	if *luaPluginDir != "" {
+		plugins, err = msgplugin.ReadPluginDir(*luaPluginDir)
 		if err != nil {
 			log.Fatalf("failed to read plugins: %v", err)
 		}
@@ -220,61 +222,33 @@ func main() {
 			span.SetAttributes(attribute.String("reply.mode", "sync"))
 		}
 
-		cctx, getScriptsSpan := mainTracer.Start(ctx, "nats.handle_message.get_scripts", trace.WithAttributes(
-			attribute.String("script.Name", m.Subject),
-			attribute.String("script.URL", m.URL),
-		))
+		wctx, spawnWorkerSpan := mainTracer.Start(ctx, "nats.handle_message.run_scripts")
 
-		scripts, err := scriptStore.GetScripts(cctx, m.Subject)
+		msgRep, err := executor.SpawnWorker(wctx, *workerExecutablePath, *workerEnvironmentPath, executor.WorkerInput{
+			NatsURL: *natsURL,
+			ScriptStore: &executor.WorkerInputScriptStore{
+				BackendName:      *backendName,
+				EtcdURL:          *etcdURL,
+				ScriptDirectory:  *scriptDir,
+				LibraryDirectory: *libraryDir,
+			},
+			LuaExecutor: &executor.WorkerInputLuaExecutor{
+				PluginDir: *luaPluginDir,
+			},
+			Message: m,
+		})
 		if err != nil {
-			log.WithError(err).WithField("subject", m.Subject).Error("failed to get scripts for subject")
-			span.RecordError(err)
-			span.SetStatus(codes.Error, "Failed to get scripts")
-
-			replyWithError(nc, fmt.Errorf("failed to get scripts for subject: %v", err), msg.Reply)
+			spawnWorkerSpan.RecordError(err)
+			spawnWorkerSpan.SetStatus(codes.Error, "failed")
+			spawnWorkerSpan.End()
+			log.WithError(err).Error("worker caught error")
 			return
 		}
-		getScriptsSpan.SetStatus(codes.Ok, fmt.Sprintf("found %d scripts", len(scripts)))
-		getScriptsSpan.End()
 
-		_, executeScriptsSpan := mainTracer.Start(ctx, "nats.handle_message.run_scripts")
-		defer executeScriptsSpan.End()
+		spawnWorkerSpan.SetStatus(codes.Ok, "worker spawned")
+		spawnWorkerSpan.End()
 
-		var wg sync.WaitGroup
-		allResults := make(chan *executor.ScriptResult, len(scripts))
-		for _, scr := range scripts {
-			wg.Add(1)
-
-			go func(ctx context.Context, msg *executor.Message, script *script.Script) {
-				defer wg.Done()
-
-				// Pass the context with trace info to the executor
-				exec, err := executor.ExecutorByName(scr.Executor, executors)
-				if err != nil {
-					executeScriptsSpan.RecordError(err)
-					executeScriptsSpan.SetStatus(codes.Error, "Failed to get executor")
-					log.WithError(err).Error("failed to get executor for script")
-
-					allResults <- &executor.ScriptResult{Error: fmt.Sprintf("failed to get executor for script: %v", err)}
-					return
-				}
-
-				allResults <- exec.HandleMessage(ctx, m, scr)
-			}(ctx, m, scr)
-		}
-		wg.Wait()
-
-		close(allResults)
-
-		_, parseReplySpan := mainTracer.Start(ctx, "nats.handle_message.parse_replies")
-		msgRep := new(Reply)
-		for res := range allResults {
-			if res.IsHTML {
-				msgRep.HTML = true
-			}
-
-			msgRep.Results = append(msgRep.Results, res)
-		}
+		_, parseReplySpan := mainTracer.Start(ctx, "nats.handle_message.parse_scripts_results")
 		parseReplySpan.SetAttributes(attribute.Int("responses", len(msgRep.Results)))
 		parseReplySpan.SetStatus(codes.Ok, "responses parsed")
 		parseReplySpan.End()
@@ -289,7 +263,7 @@ func main() {
 			return
 		}
 
-		log.WithField("subject", msg.Subject).Debugf("finished running %d scripts", len(scripts))
+		log.WithField("subject", msg.Subject).Debugf("finished running %d scripts", len(msgRep.Results))
 		span.SetStatus(codes.Ok, "Message handled")
 	})
 	if err != nil {

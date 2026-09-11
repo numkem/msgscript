@@ -22,12 +22,17 @@ const (
 
 type Message struct {
 	Async    bool   `json:"async"`
-	Executor string `json:"executor"`
 	Method   string `json:"method"`
 	Payload  []byte `json:"payload"`
 	Raw      bool   `json:"raw"`
 	Subject  string `json:"subject"`
 	URL      string `json:"url"`
+}
+
+type Reply struct {
+	Results []*ScriptResult `json:"script_result"`
+	HTML    bool                     `json:"is_html"`
+	Error   string                   `json:"error,omitempty"`
 }
 
 type ScriptResult struct {

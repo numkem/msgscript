@@ -13,6 +13,10 @@ let
     name = "msgscript-server-plugins";
     paths = cfg.plugins;
   };
+
+  workerEnvFile = pkgs.writeText "msgscript-worker.env" (
+    lib.strings.join "\n" (lib.mapAttrsToList (k: v: "${k}=${toString v}") cfg.workerEnvironment)
+  );
 in
 {
   options.services.msgscript = {
@@ -20,7 +24,7 @@ in
 
     etcdEndpoints = mkOption {
       type = types.listOf types.str;
-      default = [ "http://127.0.0.1:2379" ];
+      default = [ ];
       description = mdDoc "Etcd endpoints to connect to";
     };
 
@@ -61,12 +65,6 @@ in
       default = "${cfg.dataDir}/libs";
     };
 
-    extraPathPackages = mkOption {
-      type = types.listOf types.package;
-      description = "List of extra packages to add to the PATH of the service. Useful when using cmd.exec() in lua";
-      default = [ ];
-    };
-
     user = mkOption {
       type = types.str;
       default = "msgscript";
@@ -90,6 +88,14 @@ in
       default = "localhost:4317";
       description = "OpenTelemetry collector endpoint URL.";
     };
+
+    workerEnvironment = mkOption {
+      type = types.attrsOf types.str;
+      default = {
+        PATH = lib.makeBinPath [ pkgs.coreutils ];
+      };
+      description = "Environment variables passed to the worker";
+    };
   };
 
   config = mkIf cfg.enable {
@@ -104,10 +110,13 @@ in
           OTEL_ENDPOINT = cfg.otelEndpoint;
         });
 
-      path = cfg.extraPathPackages;
-
       serviceConfig = {
-        ExecStart = "${pkgs.msgscript-server}/bin/msgscript -backend ${cfg.backend} -etcdurl ${lib.concatStringsSep "," cfg.etcdEndpoints} -natsurl ${cfg.natsUrl} -plugin ${pluginDir} -script ${cfg.scriptDir} -library ${cfg.libraryDir}";
+        ExecStart =
+          "${pkgs.msgscript-server}/bin/msgscript -backend ${cfg.backend} -plugin ${pluginDir} -script ${cfg.scriptDir} -library ${cfg.libraryDir} -wexec ${pkgs.msgscript-worker}/bin/worker -wenv ${workerEnvFile}"
+          + lib.optionalString (
+            (lib.length cfg.etcdEndpoints) > 0
+          ) " -etcdurl ${lib.concatStringsSep "," cfg.etcdEndpoints}"
+          + lib.optionalString (cfg.natsUrl != "") " -natsurl ${cfg.natsUrl}";
 
         User = cfg.user;
         Group = cfg.group;
@@ -172,5 +181,11 @@ in
     users.groups = mkIf (cfg.group == "msgscript") {
       msgscript = { };
     };
+
+    systemd.tmpfiles.rules = [
+      "d ${cfg.dataDir} 0775 ${cfg.user} ${cfg.group} -"
+      "d ${cfg.dataDir}/libs 0775 ${cfg.user} ${cfg.group} -"
+      "d ${cfg.dataDir}/scripts 0775 ${cfg.user} ${cfg.group} -"
+    ];
   };
 }

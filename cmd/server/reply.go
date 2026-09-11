@@ -10,13 +10,7 @@ import (
 	"github.com/numkem/msgscript/executor"
 )
 
-type Reply struct {
-	Results []*executor.ScriptResult `json:"script_result"`
-	HTML    bool                     `json:"is_html"`
-	Error   string                   `json:"error,omitempty"`
-}
-
-func replyMessage(nc *nats.Conn, msg *executor.Message, replySubject string, rep *Reply) error {
+func replyMessage(nc *nats.Conn, msg *executor.Message, replySubject string, rep *executor.Reply) error {
 	fields := log.Fields{
 		"Subject": msg.Subject,
 		"URL":     msg.URL,
@@ -46,7 +40,7 @@ func replyMessage(nc *nats.Conn, msg *executor.Message, replySubject string, rep
 }
 
 func replyWithError(nc *nats.Conn, resErr error, replySubject string) {
-	payload, err := json.Marshal(&Reply{Error: resErr.Error()})
+	payload, err := json.Marshal(&executor.Reply{Error: resErr.Error()})
 	if err != nil {
 		log.Errorf("failed to serialize script reply to JSON: %v", err)
 	}
