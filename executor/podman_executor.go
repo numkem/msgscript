@@ -69,7 +69,6 @@ func (pe *PodmanExecutor) HandleMessage(ctx context.Context, msg *Message, scr *
 			attribute.String("subject", msg.Subject),
 			attribute.String("script.name", scr.Name),
 			attribute.String("method", msg.Method),
-			attribute.Int("payload_size", len(msg.Payload)),
 		),
 	)
 	defer span.End()
@@ -162,7 +161,7 @@ func (pe *PodmanExecutor) executeInContainer(ctx context.Context, fields log.Fie
 	spec := specgen.NewSpecGenerator(cfg.Image, false)
 	spec.Command = cfg.Command
 	spec.Name = containerName
-	spec.Env = map[string]string{"SUBJECT": msg.Subject, "URL": msg.URL, "PAYLOAD": string(msg.Payload), "METHOD": msg.Method}
+	spec.Env = map[string]string{"SUBJECT": msg.Subject, "URL": msg.URL, "METHOD": msg.Method}
 	spec.Mounts = cfg.Mounts
 	spec.User = cfg.User
 	spec.Groups = cfg.Groups
@@ -321,7 +320,7 @@ func (pe *PodmanExecutor) executeInContainer(ctx context.Context, fields log.Fie
 		span.SetStatus(codes.Error, "Failed to read stdout")
 		return nil, fmt.Errorf("failed to read stdout file %s: %w", stdout.Name(), err)
 	}
-	readStdoutSpan.SetAttributes(attribute.Int("stdout_size", len(resStdout)))
+	readStdoutSpan.SetAttributes(attribute.Int("result.stdout.size", len(resStdout)))
 	readStdoutSpan.SetStatus(codes.Ok, "")
 	readStdoutSpan.End()
 
@@ -337,7 +336,7 @@ func (pe *PodmanExecutor) executeInContainer(ctx context.Context, fields log.Fie
 		return nil, fmt.Errorf("failed to read stderr file %s: %w", stderr.Name(), err)
 	}
 	readStderrSpan.SetAttributes(
-		attribute.Int("stderr_size", len(resStderr)),
+		attribute.Int("stderr.size", len(resStderr)),
 		attribute.Bool("has_stderr", len(resStderr) > 0),
 	)
 	readStderrSpan.SetStatus(codes.Ok, "")
@@ -355,8 +354,6 @@ func (pe *PodmanExecutor) executeInContainer(ctx context.Context, fields log.Fie
 
 	span.SetAttributes(
 		attribute.Int("result.exit_code", int(exitCode)),
-		attribute.Int("result.stdout_size", len(resStdout)),
-		attribute.Int("result.stderr_size", len(resStderr)),
 	)
 
 	if exitCode == 0 && len(resStderr) == 0 {

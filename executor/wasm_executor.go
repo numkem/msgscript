@@ -141,13 +141,27 @@ func (we *WasmExecutor) HandleMessage(ctx context.Context, msg *Message, scr *sc
 	wasiConfig := wasmtime.NewWasiConfig()
 	wasiConfig.SetStdoutFile(stdoutFile.Name())
 	wasiConfig.SetStderrFile(stderrFile.Name())
-	wasiConfig.SetEnv([]string{"SUBJECT", "PAYLOAD", "METHOD", "URL"}, []string{msg.Subject, string(msg.Payload), msg.Method, msg.URL})
+	wasiConfig.SetEnv([]string{"SUBJECT", "METHOD", "URL"}, []string{msg.Subject, msg.Method, msg.URL})
 	span.SetAttributes(
 		attribute.String("wasm.env.subject", msg.Subject),
 		attribute.String("wasm.env.method", msg.Method),
 		attribute.String("wasm.env.url", msg.URL),
 	)
 
+	// Create a temp file that will contain the payload
+	payloadFile, err := os.CreateTemp("", "wasm-stdin")
+	if err != nil {
+		return ScriptResultWithError(fmt.Errorf("failed to create temp payload file: %v", err))
+	}
+	defer payloadFile.Close()
+	defer os.Remove(payloadFile.Name())
+
+	_, err = payloadFile.Write(msg.Payload)
+	if err != nil {
+		return ScriptResultWithError(fmt.Errorf("failed to write to temp file %s: %v", payloadFile.Name(), err))
+	}
+
+	wasiConfig.SetStdinFile(payloadFile.Name())
 	store := wasmtime.NewStore(engine)
 	store.SetWasi(wasiConfig)
 
