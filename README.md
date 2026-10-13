@@ -51,7 +51,7 @@
 
 <!-- markdown-toc end -->
 
-TLDR: msgscript is what you could call a poor man's Lambda-like function/application server. It can run functions and even some small web based applications.
+TLDR: msgscript is a fast self-hosted application server in Go. It listens to events either as NATS messages or HTTP webhooks and executes scripts (lua, WASM or podman containers).
 
 ## Features
 
@@ -127,9 +127,9 @@ Just like in HTTP mode, the function executed will have the same name as the HTT
 
 The function is expected to return a string. If it does not, the server will log a warning: `Script returned no response`. 
 
-In **NATS** mode: it will return the string as-is.
+In NATS mode: it will return the string as-is.
 
-In **HTTP** mode: it will return the following JSON document:
+In HTTP mode: it will return the following JSON document:
 ``` json
 {"calculate":{"http_code":0,"error":"","http_headers":{},"is_html":false,"payload":"SGkhIEknbSBlbmNvZGVkIQo="}}
 ```
