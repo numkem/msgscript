@@ -40,7 +40,7 @@ func main() {
 	luaPluginDir := flag.String("plugin", "", "Plugin directory")
 	libraryDir := flag.String("library", "", "Library directory")
 	scriptDir := flag.String("script", ".", "Script directory")
-	workerExecutablePath := flag.String("wexec", "./worker", "Path to the worker executoable")
+	workerExecutablePath := flag.String("wexec", "./worker", "Path to the worker executable")
 	workerEnvironmentPath := flag.String("wenv", "", "Path to a file containing environment variables for the worker")
 	flag.Parse()
 
