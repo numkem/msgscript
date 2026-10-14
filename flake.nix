@@ -40,14 +40,6 @@
         let
           pkgs = import nixpkgs { inherit system; };
           lib = pkgs.lib;
-
-          mkTest =
-            testFile:
-            import testFile {
-              inherit pkgs;
-              modules = self.nixosModules.default;
-              overlays = [ self.overlays.default ];
-            };
         in
         rec {
           default = server;
@@ -90,13 +82,6 @@
               );
             in
             lib.genAttrs pluginDirs (name: mkPlugin pkgs name "${self}/plugins/${name}");
-
-          # Tests
-          test-minimal = mkTest ./nix/tests/minimal.nix;
-          test-lua-file = mkTest ./nix/tests/lua-file.nix;
-
-          test-etcd = mkTest ./nix/tests/etcd.nix;
-          test-lua-etcd = mkTest ./nix/tests/lua-etcd.nix;
         };
     in
     {
@@ -121,6 +106,28 @@
         {
           "x86_64-linux" = mkApps "x86_64-linux";
           "aarch64-linux" = mkApps "aarch64-linux";
+        };
+
+      checks.x86_64-linux =
+        let
+          pkgs = import nixpkgs { system = "x86_64-linux"; };
+
+          mkTest =
+            testFile:
+            import testFile {
+              inherit pkgs;
+              modules = self.nixosModules.default;
+              overlays = [ self.overlays.default ];
+            };
+        in
+        {
+          # Tests
+          test-minimal = mkTest ./nix/tests/minimal.nix;
+          test-lua-file = mkTest ./nix/tests/lua-file.nix;
+
+          test-etcd = mkTest ./nix/tests/etcd.nix;
+          test-lua-etcd = mkTest ./nix/tests/lua-etcd.nix;
+          test-wasm-etcd = mkTest ./nix/tests/wasm.nix;
         };
 
       devShells.x86_64-linux.default =
