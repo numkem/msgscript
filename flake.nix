@@ -93,8 +93,10 @@
 
           # Tests
           test-minimal = mkTest ./nix/tests/minimal.nix;
-          test-etcd = mkTest ./nix/tests/etcd.nix;
           test-lua-file = mkTest ./nix/tests/lua-file.nix;
+
+          test-etcd = mkTest ./nix/tests/etcd.nix;
+          test-lua-etcd = mkTest ./nix/tests/lua-etcd.nix;
         };
     in
     {
