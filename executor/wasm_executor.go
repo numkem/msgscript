@@ -34,8 +34,6 @@ type WasmExecutor struct {
 func NewWasmExecutor(c context.Context, store msgstore.ScriptStore, plugins []msgplugins.PreloadFunc, nc *nats.Conn) Executor {
 	ctx, cancelFunc := context.WithCancel(c)
 
-	log.Info("WASM executor initialized")
-
 	return &WasmExecutor{
 		cancelFunc: cancelFunc,
 		ctx:        ctx,
