@@ -318,7 +318,7 @@ Whenever a script is run, Msgscript spawns a process from `cmd/worker` which wil
 Msgscript has support for multiple executors, namely what runs the code in the scripts.
 
 * Lua is the fastest and the smallest. It's meant to be the primary choice as it doesn't need anything else to run.
-* WASM requires a built binary specifically for the WASM (not WASI) runtime. The `examples/wasm` folder contains a C and Go workable example.
+* WASM requires a built binary specifically for the WASI runtime (internally it uses [wasmtime](https://github.com/bytecodealliance/wasmtime-go/)). The `examples/wasm` folder contains a C and Go workable example.
 * Podman runs a container and cleans up afterwards.
 
 #### Lua
