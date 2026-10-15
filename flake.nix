@@ -9,7 +9,7 @@
     { self, nixpkgs }:
     let
       version = "1.0.0";
-      vendorHash = "sha256-Jer/ADurA+BwvAuuTjEycJNExBnobEs72ccQMmOqV1k=";
+      vendorHash = "sha256-BN4okB9GMrh/nb+wRLp6w6GEPQAZ6KEwrz2LMH0eOh4=";
 
       mkPlugin =
         pkgs: name: path:
@@ -108,6 +108,7 @@
           "aarch64-linux" = mkApps "aarch64-linux";
         };
 
+      # Tests
       checks.x86_64-linux =
         let
           pkgs = import nixpkgs { system = "x86_64-linux"; };
@@ -121,13 +122,8 @@
             };
         in
         {
-          # Tests
-          test-minimal = mkTest ./nix/tests/minimal.nix;
-          test-lua-file = mkTest ./nix/tests/lua-file.nix;
-
-          test-etcd = mkTest ./nix/tests/etcd.nix;
-          test-lua-etcd = mkTest ./nix/tests/lua-etcd.nix;
-          test-wasm-etcd = mkTest ./nix/tests/wasm.nix;
+          etcd = mkTest ./nix/tests/etcd.nix;
+          file = mkTest ./nix/tests/file.nix;
         };
 
       devShells.x86_64-linux.default =

@@ -1,6 +1,6 @@
---* subject: funcs.hello
+--* subject: funcs.podmanhello
 --* name: podman
 --* executor: podman
 {
-    "image": "hello-world"
+    "image": "quay.io/podman/hello"
 }

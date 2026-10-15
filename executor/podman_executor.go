@@ -10,10 +10,6 @@ import (
 	"os"
 	"sync"
 
-	"github.com/containers/podman/v5/pkg/bindings"
-	"github.com/containers/podman/v5/pkg/bindings/containers"
-	"github.com/containers/podman/v5/pkg/bindings/images"
-	"github.com/containers/podman/v5/pkg/specgen"
 	"github.com/google/uuid"
 	spec "github.com/opencontainers/runtime-spec/specs-go"
 	log "github.com/sirupsen/logrus"
@@ -21,9 +17,12 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
+	"go.podman.io/podman/v6/pkg/bindings"
+	"go.podman.io/podman/v6/pkg/bindings/containers"
+	"go.podman.io/podman/v6/pkg/bindings/images"
+	"go.podman.io/podman/v6/pkg/specgen"
 
 	"github.com/numkem/msgscript/script"
-	scriptLib "github.com/numkem/msgscript/script"
 	msgstore "github.com/numkem/msgscript/store"
 )
 
@@ -42,15 +41,14 @@ type containerConfiguration struct {
 	Privileged bool         `json:"privileged"`
 	User       string       `json:"user"`
 	Groups     []string     `json:"groups"`
+	Username   string       `json:"username"`
+	Password   string       `json:"password"`
+	PullPolicy string       `json:"pull_policy"`
 }
 
 func NewPodmanExecutor(ctx context.Context, store msgstore.ScriptStore) (*PodmanExecutor, error) {
-	// Get Podman socket location
-	sock_dir := os.Getenv("XDG_RUNTIME_DIR")
-	socket := "unix:" + sock_dir + "/podman/podman.sock"
-
 	// Connect to Podman socket
-	connText, err := bindings.NewConnection(ctx, socket)
+	connText, err := bindings.NewConnection(ctx, "unix:/run/podman/podman.sock")
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to the podman socket: %w", err)
 	}
@@ -79,7 +77,7 @@ func (pe *PodmanExecutor) HandleMessage(ctx context.Context, msg *Message, scr *
 	fields["name"] = scr.Name
 
 	_, parseSpan := podmanTracer.Start(ctx, "podman.parse_script")
-	scr, err := scriptLib.ReadString(string(scr.Content))
+	scr, err := script.ReadString(string(scr.Content))
 	if err != nil {
 		parseSpan.RecordError(err)
 		parseSpan.SetStatus(codes.Error, "Failed to parse script")
@@ -91,7 +89,7 @@ func (pe *PodmanExecutor) HandleMessage(ctx context.Context, msg *Message, scr *
 	parseSpan.SetStatus(codes.Ok, "")
 	parseSpan.End()
 
-	res, err := pe.executeInContainer(ctx, fields, scr, msg)
+	res, err := pe.executeContainer(ctx, fields, scr, msg)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "Failed to execute container")
@@ -108,7 +106,7 @@ func (pe *PodmanExecutor) HandleMessage(ctx context.Context, msg *Message, scr *
 	return res
 }
 
-func (pe *PodmanExecutor) executeInContainer(ctx context.Context, fields log.Fields, scr *scriptLib.Script, msg *Message) (*ScriptResult, error) {
+func (pe *PodmanExecutor) executeContainer(ctx context.Context, fields log.Fields, scr *script.Script, msg *Message) (*ScriptResult, error) {
 	ctx, span := podmanTracer.Start(ctx, "podman.execute_container")
 	defer span.End()
 
@@ -143,7 +141,16 @@ func (pe *PodmanExecutor) executeInContainer(ctx context.Context, fields log.Fie
 			attribute.String("container.image", cfg.Image),
 		),
 	)
-	_, err = images.Pull(pe.ConnText, cfg.Image, nil)
+ 
+	pullPolicy := cfg.PullPolicy
+	if pullPolicy == "" {
+		pullPolicy = "missing"
+	}
+	_, err = images.Pull(pe.ConnText, cfg.Image, &images.PullOptions{
+		Username: &cfg.Username,
+		Password: &cfg.Password,
+		Policy:   &pullPolicy,
+	})
 	if err != nil {
 		pullSpan.RecordError(err)
 		pullSpan.SetStatus(codes.Error, "Failed to pull image")
@@ -164,9 +171,9 @@ func (pe *PodmanExecutor) executeInContainer(ctx context.Context, fields log.Fie
 	spec.User = cfg.User
 	spec.Groups = cfg.Groups
 	spec.Privileged = &cfg.Privileged
-	spec.Stdin = boolPtr(true)
-	spec.Terminal = boolPtr(true)
-	spec.Remove = boolPtr(true)
+	spec.Stdin = new(true)
+	spec.Terminal = new(true)
+	spec.Remove = new(true)
 
 	fields["ctnName"] = containerName
 
@@ -367,16 +374,8 @@ func (pe *PodmanExecutor) Stop() {
 	// Go through each running container and kill them
 	pe.containers.Range(func(key, value any) bool {
 		containers.Kill(pe.ConnText, value.(string), &containers.KillOptions{
-			Signal: stringPtr("SIGKILL"),
+			Signal: new("SIGKILL"),
 		})
 		return true
 	})
-}
-
-func stringPtr(s string) *string {
-	return &s
-}
-
-func boolPtr(b bool) *bool {
-	return &b
 }

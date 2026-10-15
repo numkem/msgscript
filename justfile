@@ -9,3 +9,7 @@ all-plugins:
 
 worker:
     go build ./cmd/worker
+
+test:
+    nix build .#checks.x86_64-linux.file -L --no-link
+    nix build .#checks.x86_64-linux.etcd -L --no-link
