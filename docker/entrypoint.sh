@@ -1,7 +1,6 @@
 #!/bin/sh
 set -e
 
-# Function to display usage information
 usage() {
     echo "Usage: $0 [cli|server] [arguments...]"
     echo ""
@@ -16,7 +15,6 @@ usage() {
     exit 1
 }
 
-# Check if at least one argument is provided
 if [ $# -eq 0 ]; then
     echo "Error: No command specified."
     usage
@@ -24,9 +22,8 @@ fi
 
 # Get the command (first argument)
 COMMAND="$1"
-shift  # Remove the command from arguments list
+shift
 
-# Execute based on the command
 case "$COMMAND" in
     "cli")
         if [ $# -gt 0 ] && ([ "$1" = "dev" ] || [ "$1" = "devhttp" ]); then
@@ -38,7 +35,7 @@ case "$COMMAND" in
         fi
         ;;
     "server")
-        exec /app/bin/server -plugin /app/share/plugins "$@"
+        exec /app/bin/server -plugin /app/share/plugins -worker ./app/bin/worker "$@"
         ;;
     "--help"|"-h"|"help")
         usage

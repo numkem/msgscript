@@ -23,15 +23,23 @@ RUN nix \
     --extra-experimental-features "nix-command flakes" \
     --option filter-syscalls false \
     --option max-jobs auto \
+    build .#worker && \
+    mv /tmp/build/server /tmp/build/worker
+
+RUN nix \
+    --extra-experimental-features "nix-command flakes" \
+    --option filter-syscalls false \
+    --option max-jobs auto \
     build .#allPlugins && \
     mv /tmp/build/result /tmp/build/allPlugins
 
 # Copy the Nix store closure into a directory. The Nix store closure is the
 # entire set of Nix store values that we need for our build.
 RUN mkdir /tmp/nix-store-closure
-RUN cp -R $(nix-store -qR server/) /tmp/nix-store-closure
-RUN cp -R $(nix-store -qR cli/) /tmp/nix-store-closure
-RUN cp -R $(nix-store -qR allPlugins/) /tmp/nix-store-closure
+RUN cp -R $(nix-store -qR /tmp/build/server) /tmp/nix-store-closure
+RUN cp -R $(nix-store -qR /tmp/build/worker) /tmp/nix-store-closure
+RUN cp -R $(nix-store -qR /tmp/build/cli) /tmp/nix-store-closure
+RUN cp -R $(nix-store -qR /tmp/build/allPlugins) /tmp/nix-store-closure
 
 
 FROM alpine:latest
