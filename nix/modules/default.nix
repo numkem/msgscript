@@ -10,7 +10,7 @@ let
   cfg = config.services.msgscript;
 
   pluginDir = pkgs.symlinkJoin {
-    name = "msgscript-server-plugins";
+    name = "msgscript-worker-plugins";
     paths = cfg.plugins;
   };
 
