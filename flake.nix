@@ -8,8 +8,8 @@
   outputs =
     { self, nixpkgs }:
     let
-      version = "0.9.0";
-      vendorHash = "sha256-Jer/ADurA+BwvAuuTjEycJNExBnobEs72ccQMmOqV1k=";
+      version = "1.0.0";
+      vendorHash = "sha256-LzsCivkWwbgESrUDEsGzIg8CabpoV5ot2tl75qizvfI=";
 
       mkPlugin =
         pkgs: name: path:
@@ -34,13 +34,12 @@
             cp ${name}.so $out/
           '';
         };
-    in
-    {
-      packages.x86_64-linux =
+
+      mkPackages =
+        system:
         let
-          pkgs = import nixpkgs { system = "x86_64-linux"; };
+          pkgs = import nixpkgs { inherit system; };
           lib = pkgs.lib;
-          system = "x86_64-linux";
         in
         rec {
           default = server;
@@ -50,17 +49,23 @@
           };
 
           server = pkgs.callPackage ./nix/pkgs/server.nix {
+            inherit version vendorHash;
+          };
+
+          worker = pkgs.callPackage ./nix/pkgs/worker.nix {
             inherit version vendorHash;
           };
 
           runServer = pkgs.writeScript "msgscript" ''
             #!/usr/bin/env bash
-            ${self.packages.${system}.server}/bin/msgscript -plugin ${allPlugins}/ $@
+            ${self.packages.${system}.server}/bin/msgscript -plugin ${allPlugins}/ -wexec ${self.packages.${system}.worker}/bin/worker $@
           '';
 
           runCli = pkgs.writeScript "msgscriptcli" ''
             #!/usr/bin/env bash
-            ${self.packages.${system}.cli}/bin/msgscriptcli -plugin ${allPlugins}/ $@
+            ${self.packages.${system}.cli}/bin/msgscriptcli -plugin ${allPlugins}/ -wexec ${
+              system.packages.${system}.worker
+            }/bin/worker $@
           '';
 
           allPlugins = pkgs.symlinkJoin {
@@ -77,66 +82,13 @@
               );
             in
             lib.genAttrs pluginDirs (name: mkPlugin pkgs name "${self}/plugins/${name}");
-
-          test = pkgs.testers.runNixOSTest {
-            inherit system;
-            name = "msgscript";
-            nodes.machine = {...}: {
-              imports = [
-                self.modules.default
-              ];
-
-              nixpks.overlays = [ self.overlays.default ];
-
-              services = {
-                etcd.enable = true;
-
-                msgscrit.enable = true;
-              };
-            };
-
-            skipLint = true;
-
-            testScript = ''
-import json
-import sys
-
-start_all()
-
-server.wait_for_open_port(2379)
-            '';
-          };
         };
-      packages.aarch64-linux =
-        let
-          pkgs = import nixpkgs { system = "aarch64-linux"; };
-          lib = pkgs.lib;
-        in
-        rec {
-          cli = pkgs.callPackage ./nix/pkgs/cli.nix {
-            inherit version vendorHash;
-          };
-          server = pkgs.callPackage ./nix/pkgs/server.nix {
-            inherit version vendorHash;
-          };
-          default = server;
-
-          allPlugins = pkgs.symlinkJoin {
-            name = "msgscript-all-plugins";
-            paths = lib.attrValues plugins;
-          };
-
-          plugins =
-            let
-              pluginDirs = lib.remove "" (
-                lib.mapAttrsToList (name: kind: if kind == "directory" then name else "") (
-                  builtins.readDir "${self}/plugins/"
-                )
-              );
-            in
-            lib.genAttrs pluginDirs (name: mkPlugin pkgs name "${self}/plugins/${name}");
-        };
-
+    in
+    {
+      packages = {
+        "x86_64-linux" = mkPackages "x86_64-linux";
+        "aarch64-linux" = mkPackages "aarch64-linux";
+      };
       apps =
         let
           mkApps = system: {
@@ -153,7 +105,25 @@ server.wait_for_open_port(2379)
         in
         {
           "x86_64-linux" = mkApps "x86_64-linux";
-          "aarch64-linux" = mkApps "aarch64-linux"; 
+          "aarch64-linux" = mkApps "aarch64-linux";
+        };
+
+      # Tests
+      checks.x86_64-linux =
+        let
+          pkgs = import nixpkgs { system = "x86_64-linux"; };
+
+          mkTest =
+            testFile:
+            import testFile {
+              inherit pkgs;
+              modules = self.nixosModules.default;
+              overlays = [ self.overlays.default ];
+            };
+        in
+        {
+          etcd = mkTest ./nix/tests/etcd.nix;
+          file = mkTest ./nix/tests/file.nix;
         };
 
       devShells.x86_64-linux.default =
@@ -196,6 +166,8 @@ server.wait_for_open_port(2379)
       overlays.default = final: prev: {
         msgscript-cli = self.packages.${final.system}.cli;
         msgscript-server = self.packages.${final.system}.server;
+        msgscript-worker = self.packages.${final.system}.worker;
+        msgscript-plugins = self.packages.${final.system}.plugins;
       };
 
       nixosModules.default = import ./nix/modules/default.nix;

@@ -32,7 +32,7 @@ func replyWithSubjectList(ctx context.Context, nc *nats.Conn, scriptStore store.
 		return
 	}
 
-	replyMessage(nc, &executor.Message{}, replySubject, &Reply{
+	replyMessage(nc, &executor.Message{}, replySubject, &executor.Reply{
 		Results: []*executor.ScriptResult{
 			{
 				Code:    http.StatusOK,
@@ -70,7 +70,7 @@ func replyWithNamesForSubject(ctx context.Context, nc *nats.Conn, scriptStore st
 		return
 	}
 
-	replyMessage(nc, &executor.Message{}, replySubject, &Reply{
+	replyMessage(nc, &executor.Message{}, replySubject, &executor.Reply{
 		Results: []*executor.ScriptResult{
 			{
 				Code:    http.StatusOK,
@@ -110,7 +110,7 @@ func replyWithNamedScriptInfo(ctx context.Context, nc *nats.Conn, scriptStore st
 		script.Executor = executor.EXECUTOR_LUA_NAME
 	}
 
-	replyMessage(nc, &executor.Message{}, replySubject, &Reply{
+	replyMessage(nc, &executor.Message{}, replySubject, &executor.Reply{
 		Results: []*executor.ScriptResult{
 			{
 				Code:  http.StatusOK,

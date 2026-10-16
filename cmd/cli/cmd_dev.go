@@ -27,6 +27,7 @@ func init() {
 	devCmd.PersistentFlags().StringP("input", "i", "", "Path to or actual payload to send to the function")
 	devCmd.PersistentFlags().StringP("library", "l", "", "Path to a folder containing libraries to load for the function")
 	devCmd.PersistentFlags().StringP("pluginDir", "p", "", "Path to a folder with plugins")
+	devCmd.PersistentFlags().StringP("executor", "e", executor.EXECUTOR_LUA_NAME, "Executor to use for the script")
 
 	devCmd.MarkFlagRequired("subject")
 	devCmd.MarkFlagRequired("name")
@@ -110,11 +111,10 @@ func devCmdRun(cmd *cobra.Command, args []string) {
 	m := &executor.Message{
 		Payload:  payload,
 		Subject:  subject,
-		Executor: cmd.Flag("executor").Value.String(),
 	}
 
 	executors := executor.StartAllExecutors(cmd.Context(), store, plugins, nil)
-	exec, err := executor.ExecutorByName(m.Executor, executors)
+	exec, err := executor.ExecutorByName(cmd.Flag("executor").Value.String(), executors)
 	if err != nil {
 		cmd.PrintErrf("failed to get executor for message: %v", err)
 		return

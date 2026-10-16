@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/nats-io/nats.go"
+	log "github.com/sirupsen/logrus"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
@@ -124,7 +125,9 @@ func newTracerProvider(ctx context.Context) (*trace.TracerProvider, error) {
 			semconv.ServiceVersion(version),
 		),
 	)
-	if err != nil {
+	if errors.Is(err, resource.ErrPartialResource) || errors.Is(err, resource.ErrSchemaURLConflict) {
+		log.Warn(err)
+	} else if err != nil {
 		return nil, err
 	}
 

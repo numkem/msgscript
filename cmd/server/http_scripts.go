@@ -9,6 +9,8 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/nats-io/nats.go"
+
+	"github.com/numkem/msgscript/executor"
 )
 
 func (fh *functionHandler) ListScripts(w http.ResponseWriter, r *http.Request) {
@@ -22,7 +24,7 @@ func (fh *functionHandler) ListScripts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rep := &Reply{}
+	rep := &executor.Reply{}
 	err = json.Unmarshal(response.Data, rep)
 	if err != nil {
 		returnError(w, err)
@@ -56,7 +58,7 @@ func (fh *functionHandler) ListNamesForScript(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	rep := &Reply{}
+	rep := &executor.Reply{}
 	err = json.Unmarshal(response.Data, rep)
 	if err != nil {
 		returnError(w, err)
@@ -103,7 +105,7 @@ func (fh *functionHandler) InfoForNamedScript(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	rep := &Reply{}
+	rep := &executor.Reply{}
 	err = json.Unmarshal(response.Data, rep)
 	if err != nil {
 		returnError(w, err)

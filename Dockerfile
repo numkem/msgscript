@@ -1,51 +1,39 @@
-FROM nixos/nix:latest AS builder
+FROM golang:1.26-bookworm as builder
 
-# Copy our source and setup our working dir.
-COPY . /tmp/build
-WORKDIR /tmp/build
+ENV CGO_LDFLAGS="-lassuan -lgpg-error"
+RUN apt-get update && \
+    apt-get install -y build-essential xz-utils libgpgme-dev libbtrfs-dev libassuan-dev libgpg-error0 && \
+    curl https://wasmtime.dev/install.sh -sSf | bash
 
-# Build our Nix environment
-RUN nix \
-    --extra-experimental-features "nix-command flakes" \
-    --option filter-syscalls false \
-    --option max-jobs auto \
-    build .#server && \
-    mv /tmp/build/result /tmp/build/server
+WORKDIR /build
+COPY ./go.mod ./go.sum .
+RUN go mod download
 
-RUN nix \
-    --extra-experimental-features "nix-command flakes" \
-    --option filter-syscalls false \
-    --option max-jobs auto \
-    build .#cli && \
-    mv /tmp/build/result /tmp/build/cli
+ENV CGO_ENABLED=1
 
-RUN nix \
-    --extra-experimental-features "nix-command flakes" \
-    --option filter-syscalls false \
-    --option max-jobs auto \
-    build .#allPlugins && \
-    mv /tmp/build/result /tmp/build/allPlugins
+COPY --parents ./nats.go ./embed.go ./logo.webp ./README.md ./cmd ./executor ./lua ./plugins ./script ./store ./templates .
+RUN go build ./cmd/cli && \
+    go build ./cmd/server && \
+    go build -tags "wasmtime podman" ./cmd/worker && \
+    go build -buildmode=plugin -o db.so ./plugins/db && \
+    go build -buildmode=plugin -o gopher-lua-libs.so ./plugins/gopher-lua-libs && \
+    go build -buildmode=plugin -o hello.so ./plugins/hello && \
+    go build -buildmode=plugin -o httpscrape.so ./plugins/httpscrape && \
+    go build -buildmode=plugin -o vault.so ./plugins/vault
 
-# Copy the Nix store closure into a directory. The Nix store closure is the
-# entire set of Nix store values that we need for our build.
-RUN mkdir /tmp/nix-store-closure
-RUN cp -R $(nix-store -qR server/) /tmp/nix-store-closure
-RUN cp -R $(nix-store -qR cli/) /tmp/nix-store-closure
-RUN cp -R $(nix-store -qR allPlugins/) /tmp/nix-store-closure
+FROM debian:bookworm-slim
 
-
-FROM alpine:latest
+RUN curl https://wasmtime.dev/install.sh -sSf | bash
 
 WORKDIR /app
 
+RUN mkdir -p /app/plugins
 COPY ./docker/entrypoint.sh /entrypoint.sh
-RUN mkdir -p /app/share/plugins && chmod +x /entrypoint.sh
-
-COPY --from=builder /tmp/nix-store-closure /nix/store
-COPY --from=builder /tmp/build/server /app
-COPY --from=builder /tmp/build/cli /app
-COPY --from=builder /tmp/build/allPlugins/*.so /app/share/plugins/
-RUN mv /app/bin/msgscript /app/bin/server && mv /app/bin/msgscriptcli /app/bin/cli
+COPY --from=builder /build/cli /app/cli
+COPY --from=builder /build/server /app/server
+COPY --from=builder /build/worker /app/worker
+COPY --from=builder /build/*.so /app/plugins/
+RUN chmod +x /entrypoint.sh
 
 EXPOSE 7643
 

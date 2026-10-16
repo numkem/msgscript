@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/nats-io/nats.go"
+	log "github.com/sirupsen/logrus"
 
 	"github.com/numkem/msgscript/plugins"
 	"github.com/numkem/msgscript/script"
@@ -21,13 +22,18 @@ const (
 )
 
 type Message struct {
-	Async    bool   `json:"async"`
-	Executor string `json:"executor"`
-	Method   string `json:"method"`
-	Payload  []byte `json:"payload"`
-	Raw      bool   `json:"raw"`
-	Subject  string `json:"subject"`
-	URL      string `json:"url"`
+	Async   bool   `json:"async"`
+	Method  string `json:"method"`
+	Payload []byte `json:"payload"`
+	Raw     bool   `json:"raw"`
+	Subject string `json:"subject"`
+	URL     string `json:"url"`
+}
+
+type Reply struct {
+	Results []*ScriptResult `json:"script_result"`
+	HTML    bool            `json:"is_html"`
+	Error   string          `json:"error,omitempty"`
 }
 
 type ScriptResult struct {
@@ -70,10 +76,12 @@ func StartAllExecutors(ctx context.Context, scriptStore store.ScriptStore, plugi
 	executors[EXECUTOR_WASM_NAME] = NewWasmExecutor(ctx, scriptStore, nil, nil)
 
 	podmanExec, err := NewPodmanExecutor(ctx, scriptStore)
-	if err != nil {
+	if err == nil {
+		executors[EXECUTOR_PODMAN_NAME] = podmanExec
+	} else {
+		log.Errorf("Failed to start podman executor: %v", err)
 		podmanExec = nil
 	}
-	executors[EXECUTOR_PODMAN_NAME] = podmanExec
 
 	return executors
 }

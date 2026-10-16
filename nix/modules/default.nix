@@ -10,9 +10,20 @@ let
   cfg = config.services.msgscript;
 
   pluginDir = pkgs.symlinkJoin {
-    name = "msgscript-server-plugins";
+    name = "msgscript-worker-plugins";
     paths = cfg.plugins;
   };
+
+  workerEnvironment = cfg.workerEnvironment // {
+    XDG_RUNTIME_DIR = "/run/msgscript";
+    HOME = dataDir;
+  };
+
+  workerEnvFile = pkgs.writeText "msgscript-worker.env" (
+    lib.strings.join "\n" (lib.mapAttrsToList (k: v: "${k}=${toString v}") workerEnvironment)
+  );
+
+  dataDir = "/var/lib/msgscript";
 in
 {
   options.services.msgscript = {
@@ -20,7 +31,7 @@ in
 
     etcdEndpoints = mkOption {
       type = types.listOf types.str;
-      default = [ "http://127.0.0.1:2379" ];
+      default = [ ];
       description = mdDoc "Etcd endpoints to connect to";
     };
 
@@ -45,28 +56,6 @@ in
       description = mdDoc "Nats.io URL to connect to";
     };
 
-    dataDir = mkOption {
-      type = types.str;
-      default = "/var/lib/msgscript";
-      description = mdDoc "Directory available to msgscript-server for io operation. The server owns this directory";
-    };
-
-    scriptDir = mkOption {
-      type = types.str;
-      default = "${cfg.dataDir}/scripts";
-    };
-
-    libraryDir = mkOption {
-      type = types.str;
-      default = "${cfg.dataDir}/libs";
-    };
-
-    extraPathPackages = mkOption {
-      type = types.listOf types.package;
-      description = "List of extra packages to add to the PATH of the service. Useful when using cmd.exec() in lua";
-      default = [ ];
-    };
-
     user = mkOption {
       type = types.str;
       default = "msgscript";
@@ -79,6 +68,23 @@ in
       description = "Group under which msgscript runs.";
     };
 
+    enablePodman = mkOption {
+      type = types.bool;
+      default = false;
+      description = lib.mdDoc ''
+        Enable podman for msgscript worker.
+
+        This will only change the systemd service not the package build.
+
+        The worker package needs to be overriden to include podman:
+        ```
+        (prev: final: {
+          msgscript-worker = final.msgscript-worker.override { withPodman = yes; };
+        })
+        ```
+      '';
+    };
+
     enableTelemetry = mkOption {
       type = types.bool;
       default = false;
@@ -89,6 +95,14 @@ in
       type = types.str;
       default = "localhost:4317";
       description = "OpenTelemetry collector endpoint URL.";
+    };
+
+    workerEnvironment = mkOption {
+      type = types.attrsOf types.str;
+      default = {
+        PATH = lib.makeBinPath [ pkgs.coreutils ];
+      };
+      description = "Environment variables passed to the worker";
     };
   };
 
@@ -104,16 +118,21 @@ in
           OTEL_ENDPOINT = cfg.otelEndpoint;
         });
 
-      path = cfg.extraPathPackages;
-
       serviceConfig = {
-        ExecStart = "${pkgs.msgscript-server}/bin/msgscript -backend ${cfg.backend} -etcdurl ${lib.concatStringsSep "," cfg.etcdEndpoints} -natsurl ${cfg.natsUrl} -plugin ${pluginDir} -script ${cfg.scriptDir} -library ${cfg.libraryDir}";
+        ExecStart =
+          "${pkgs.msgscript-server}/bin/msgscript -backend ${cfg.backend} -plugin ${pluginDir} -script ${dataDir}/scripts -library ${dataDir}/libs -wexec ${pkgs.msgscript-worker}/bin/worker -wenv ${workerEnvFile}"
+          + lib.optionalString (
+            (lib.length cfg.etcdEndpoints) > 0
+          ) " -etcdurl ${lib.concatStringsSep "," cfg.etcdEndpoints}"
+          + lib.optionalString (cfg.natsUrl != "") " -natsurl ${cfg.natsUrl}";
 
         User = cfg.user;
         Group = cfg.group;
-        WorkingDirectory = cfg.dataDir;
-        RuntimeDirectory = cfg.dataDir;
+        SupplementaryGroups = if cfg.enablePodman then [ "podman" ] else [ ];
         Restart = "on-failure";
+        RuntimeDirectory = "msgscript";
+        StateDirectory = "msgscript";
+        WorkingDirectory = dataDir;
         TimeoutSec = 15;
 
         # Security options:
@@ -122,7 +141,8 @@ in
         RestrictAddressFamilies = [
           "AF_INET"
           "AF_INET6"
-        ];
+        ]
+        ++ lib.optionals cfg.enablePodman [ "AF_UNIX" ];
         RestrictNamespaces = !config.boot.isContainer;
         RestrictRealtime = true;
         RestrictSUIDSGID = true;
@@ -165,12 +185,18 @@ in
       msgscript = {
         inherit (cfg) group;
         isSystemUser = true;
-        home = cfg.dataDir;
+        home = dataDir;
       };
     };
 
     users.groups = mkIf (cfg.group == "msgscript") {
       msgscript = { };
     };
+
+    systemd.tmpfiles.rules = [
+      "d ${dataDir} 0775 ${cfg.user} ${cfg.group} -"
+      "d ${dataDir}/libs 0775 ${cfg.user} ${cfg.group} -"
+      "d ${dataDir}/scripts 0775 ${cfg.user} ${cfg.group} -"
+    ];
   };
 }

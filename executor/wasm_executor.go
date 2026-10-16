@@ -10,7 +10,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/bytecodealliance/wasmtime-go/v37"
+	"github.com/bytecodealliance/wasmtime-go/v49"
 	"github.com/nats-io/nats.go"
 	log "github.com/sirupsen/logrus"
 	"go.opentelemetry.io/otel"
@@ -33,8 +33,6 @@ type WasmExecutor struct {
 
 func NewWasmExecutor(c context.Context, store msgstore.ScriptStore, plugins []msgplugins.PreloadFunc, nc *nats.Conn) Executor {
 	ctx, cancelFunc := context.WithCancel(c)
-
-	log.Info("WASM executor initialized")
 
 	return &WasmExecutor{
 		cancelFunc: cancelFunc,
@@ -74,7 +72,7 @@ func (we *WasmExecutor) HandleMessage(ctx context.Context, msg *Message, scr *sc
 		readSpan.End()
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "Failed to read WASM module")
-		res.Error = fmt.Sprintf("failed to read wasm module file %s: %w", scr.Content, err)
+		res.Error = fmt.Sprintf("failed to read wasm module file %s: %v", scr.Content, err)
 		return res
 	}
 	readSpan.SetAttributes(attribute.Int("wasm.module_size", len(wasmBytes)))
@@ -141,13 +139,27 @@ func (we *WasmExecutor) HandleMessage(ctx context.Context, msg *Message, scr *sc
 	wasiConfig := wasmtime.NewWasiConfig()
 	wasiConfig.SetStdoutFile(stdoutFile.Name())
 	wasiConfig.SetStderrFile(stderrFile.Name())
-	wasiConfig.SetEnv([]string{"SUBJECT", "PAYLOAD", "METHOD", "URL"}, []string{msg.Subject, string(msg.Payload), msg.Method, msg.URL})
+	wasiConfig.SetEnv([]string{"SUBJECT", "METHOD", "URL"}, []string{msg.Subject, msg.Method, msg.URL})
 	span.SetAttributes(
 		attribute.String("wasm.env.subject", msg.Subject),
 		attribute.String("wasm.env.method", msg.Method),
 		attribute.String("wasm.env.url", msg.URL),
 	)
 
+	// Create a temp file that will contain the payload
+	payloadFile, err := os.CreateTemp("", "wasm-stdin")
+	if err != nil {
+		return ScriptResultWithError(fmt.Errorf("failed to create temp payload file: %v", err))
+	}
+	defer payloadFile.Close()
+	defer os.Remove(payloadFile.Name())
+
+	_, err = payloadFile.Write(msg.Payload)
+	if err != nil {
+		return ScriptResultWithError(fmt.Errorf("failed to write to temp file %s: %v", payloadFile.Name(), err))
+	}
+
+	wasiConfig.SetStdinFile(payloadFile.Name())
 	store := wasmtime.NewStore(engine)
 	store.SetWasi(wasiConfig)
 
