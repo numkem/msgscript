@@ -5,8 +5,8 @@ usage() {
     echo "Usage: $0 [cli|server] [arguments...]"
     echo ""
     echo "Commands:"
-    echo "  cli     - Run the CLI application at /app/bin/cli"
-    echo "  server  - Run the server application at /app/bin/server"
+    echo "  cli     - Run the CLI"
+    echo "  server  - Run the server"
     echo ""
     echo "Examples:"
     echo "  $0 cli --help"
@@ -29,13 +29,13 @@ case "$COMMAND" in
         if [ $# -gt 0 ] && ([ "$1" = "dev" ] || [ "$1" = "devhttp" ]); then
             CLI_COMMAND="$1"
             shift
-            exec /app/bin/cli "$CLI_COMMAND" -plugin /app/share/plugins "$@"
+            exec /app/cli "$CLI_COMMAND" -plugin /app/plugins "$@"
         else
-            exec /app/bin/cli
+            exec /app/cli
         fi
         ;;
     "server")
-        exec /app/bin/server -plugin /app/share/plugins -worker ./app/bin/worker "$@"
+        exec /app/server -plugin /app/plugins -wexec ./app/worker "$@"
         ;;
     "--help"|"-h"|"help")
         usage
