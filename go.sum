@@ -34,8 +34,8 @@ github.com/beorn7/perks v1.0.0/go.mod h1:KWe93zE9D1o94FZ5RNwFwVgaQK1VOXiVxmqh+Ce
 github.com/beorn7/perks v1.0.1/go.mod h1:G2ZrVWU2WbWT9wwq4/hrbKbnv/1ERSJQ0ibhJ6rlkpw=
 github.com/blang/semver/v4 v4.0.0 h1:1PFHFE6yCCTv8C1TeyNNarDzntLi7wMI5i/pzqYIsAM=
 github.com/blang/semver/v4 v4.0.0/go.mod h1:IbckMUScFkM3pff0VJDNKRiT6TG/YpiHIM2yvyW5YoQ=
-github.com/bytecodealliance/wasmtime-go/v37 v37.0.0 h1:DPjdn2V3JhXHMoZ2ymRqGK+y1bDyr9wgpyYCvhjMky8=
-github.com/bytecodealliance/wasmtime-go/v37 v37.0.0/go.mod h1:Pf1l2JCTUFMnOqDIwkjzx1qfVJ09xbaXETKgRVE4jZ0=
+github.com/bytecodealliance/wasmtime-go/v49 v49.0.0 h1:kH3XJMvXKuKmFgRhhHqeYi5p/ztgJd/Trr3gU06u1fY=
+github.com/bytecodealliance/wasmtime-go/v49 v49.0.0/go.mod h1:xNsU6xgZR2dw+TgPiNqppdIbtqiZskiB/X4tWPnuwCs=
 github.com/cbroglie/mustache v1.0.1 h1:ivMg8MguXq/rrz2eu3tw6g3b16+PQhoTn6EZAhst2mw=
 github.com/cbroglie/mustache v1.0.1/go.mod h1:R/RUa+SobQ14qkP4jtx5Vke5sDytONDQXNLPY/PO69g=
 github.com/cenkalti/backoff/v3 v3.2.2 h1:cfUAAO3yvKMYKPrvhDuHSwQnhZNk/RMHKdZqKTxfm6M=

@@ -5,7 +5,7 @@ go 1.26.0
 replace github.com/openbao/openbao/api v1.12.2 => github.com/hashicorp/vault/api v1.12.2
 
 require (
-	github.com/bytecodealliance/wasmtime-go/v37 v37.0.0
+	github.com/bytecodealliance/wasmtime-go/v49 v49.0.0
 	github.com/cjoudrey/gluahttp v0.0.0-20201111170219-25003d9adfa9
 	github.com/felipejfc/gluahttpscrape v0.0.0-20170525191632-10580c4a38f9
 	github.com/fsnotify/fsnotify v1.10.1

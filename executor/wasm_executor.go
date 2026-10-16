@@ -10,7 +10,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/bytecodealliance/wasmtime-go/v37"
+	"github.com/bytecodealliance/wasmtime-go/v49"
 	"github.com/nats-io/nats.go"
 	log "github.com/sirupsen/logrus"
 	"go.opentelemetry.io/otel"
@@ -72,7 +72,7 @@ func (we *WasmExecutor) HandleMessage(ctx context.Context, msg *Message, scr *sc
 		readSpan.End()
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "Failed to read WASM module")
-		res.Error = fmt.Sprintf("failed to read wasm module file %s: %w", scr.Content, err)
+		res.Error = fmt.Sprintf("failed to read wasm module file %s: %v", scr.Content, err)
 		return res
 	}
 	readSpan.SetAttributes(attribute.Int("wasm.module_size", len(wasmBytes)))

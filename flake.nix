@@ -9,7 +9,7 @@
     { self, nixpkgs }:
     let
       version = "1.0.0";
-      vendorHash = "sha256-BN4okB9GMrh/nb+wRLp6w6GEPQAZ6KEwrz2LMH0eOh4=";
+      vendorHash = "sha256-LzsCivkWwbgESrUDEsGzIg8CabpoV5ot2tl75qizvfI=";
 
       mkPlugin =
         pkgs: name: path:
